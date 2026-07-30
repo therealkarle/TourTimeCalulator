@@ -18,51 +18,19 @@ Tour Time Calculator is a Python application that uses historical Strava activit
 4. Save the application.
 5. Copy the generated **Client ID** and **Client Secret**.
 
-### Step 2: Request an Authorization Code
+### Step 2: Obtain and store the Refresh Token
 
-Open the following URL in your browser after replacing `YOUR_CLIENT_ID`:
-
-```text
-https://www.strava.com/oauth/authorize?client_id=YOUR_CLIENT_ID&response_type=code&redirect_uri=http://localhost&approval_prompt=force&scope=read,activity:read_all
-```
-
-Approve access to your Strava account. Strava will redirect you to a URL similar to:
-
-```text
-http://localhost/?state=&code=AUTHORIZATION_CODE&scope=read,activity:read_all
-```
-
-Copy the value of the `code` parameter.
-
-### Step 3: Exchange the Code for a Refresh Token
-
-Run the following command, replacing all placeholder values:
+Set `STRAVA_CLIENT_ID` and `STRAVA_CLIENT_SECRET` in `.env`, then run:
 
 ```bash
-curl -X POST https://www.strava.com/oauth/token \
-  -d client_id=YOUR_CLIENT_ID \
-  -d client_secret=YOUR_CLIENT_SECRET \
-  -d code=AUTHORIZATION_CODE \
-  -d grant_type=authorization_code
+python scripts/get_strava_refresh_token.py
 ```
 
-Example response:
-
-```json
-{
-  "token_type": "Bearer",
-  "access_token": "example_access_token",
-  "expires_at": 1700000000,
-  "expires_in": 21600,
-  "refresh_token": "example_refresh_token",
-  "athlete": {
-    "id": 12345678,
-    "username": "example-user"
-  }
-}
-```
-
-Store the value of `refresh_token`. The application uses this token to obtain fresh Strava access tokens automatically.
+The script opens Strava in your browser, starts a temporary local callback server,
+and stores the returned `STRAVA_REFRESH_TOKEN` in `.env`. Approving access is
+required once; the application then uses this token to obtain fresh access tokens
+automatically. If the browser does not open, use `--no-browser` and open the
+printed URL manually.
 
 ## Installation
 
@@ -122,6 +90,20 @@ STRAVA_REFRESH_TOKEN=your_refresh_token
 ```
 
 Do not commit `.env` to version control.
+
+### Refresh Token automatisch eintragen
+
+Nach dem Eintragen von `STRAVA_CLIENT_ID` und `STRAVA_CLIENT_SECRET` kann der
+Refresh Token automatisch per OAuth geholt und in `.env` gespeichert werden:
+
+```bash
+python scripts/get_strava_refresh_token.py
+```
+
+Für das Script muss im Strava Developer Portal `localhost` als
+Authorization Callback Domain eingetragen sein. Standardmäßig verwendet es
+`http://localhost:8765/callback`. Falls der Port bereits belegt ist, kann ein
+anderer Port über `--port` angegeben werden.
 
 ## Usage
 
