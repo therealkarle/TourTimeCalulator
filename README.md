@@ -1,0 +1,186 @@
+# Tour Time Calculator
+
+Tour Time Calculator is a Python application that uses historical Strava activities to predict route duration, calorie burn, and average speed. It stores activity data locally in SQLite and trains Random Forest regression models separately for cycling and running activities.
+
+## Strava API Credentials Setup
+
+### Step 1: Create a Strava Application
+
+1. Sign in to the [Strava Developer Portal](https://www.strava.com/settings/api).
+2. Create a new application.
+3. Use the following values:
+
+   - **Application Name:** `Tour Time Calculator`
+   - **Category:** Select the most appropriate category.
+   - **Website:** `http://localhost`
+   - **Authorization Callback Domain:** `localhost`
+
+4. Save the application.
+5. Copy the generated **Client ID** and **Client Secret**.
+
+### Step 2: Request an Authorization Code
+
+Open the following URL in your browser after replacing `YOUR_CLIENT_ID`:
+
+```text
+https://www.strava.com/oauth/authorize?client_id=YOUR_CLIENT_ID&response_type=code&redirect_uri=http://localhost&approval_prompt=force&scope=read,activity:read_all
+```
+
+Approve access to your Strava account. Strava will redirect you to a URL similar to:
+
+```text
+http://localhost/?state=&code=AUTHORIZATION_CODE&scope=read,activity:read_all
+```
+
+Copy the value of the `code` parameter.
+
+### Step 3: Exchange the Code for a Refresh Token
+
+Run the following command, replacing all placeholder values:
+
+```bash
+curl -X POST https://www.strava.com/oauth/token \
+  -d client_id=YOUR_CLIENT_ID \
+  -d client_secret=YOUR_CLIENT_SECRET \
+  -d code=AUTHORIZATION_CODE \
+  -d grant_type=authorization_code
+```
+
+Example response:
+
+```json
+{
+  "token_type": "Bearer",
+  "access_token": "example_access_token",
+  "expires_at": 1700000000,
+  "expires_in": 21600,
+  "refresh_token": "example_refresh_token",
+  "athlete": {
+    "id": 12345678,
+    "username": "example-user"
+  }
+}
+```
+
+Store the value of `refresh_token`. The application uses this token to obtain fresh Strava access tokens automatically.
+
+## Installation
+
+Clone the repository:
+
+```bash
+git clone https://github.com/your-username/tour-time-calculator.git
+cd tour-time-calculator
+```
+
+Create and activate a virtual environment:
+
+```bash
+python -m venv venv
+```
+
+Windows PowerShell:
+
+```powershell
+.\venv\Scripts\Activate.ps1
+```
+
+macOS/Linux:
+
+```bash
+source venv/bin/activate
+```
+
+Install the dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+## Configuration
+
+Create a `.env` file from the provided template:
+
+Windows PowerShell:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+macOS/Linux:
+
+```bash
+cp .env.example .env
+```
+
+Update `.env` with your Strava credentials:
+
+```dotenv
+STRAVA_CLIENT_ID=your_client_id
+STRAVA_CLIENT_SECRET=your_client_secret
+STRAVA_REFRESH_TOKEN=your_refresh_token
+```
+
+Do not commit `.env` to version control.
+
+## Usage
+
+Launch the interactive command-line application:
+
+```bash
+python main.py
+```
+
+The application will:
+
+1. Synchronize new Strava activities.
+2. Store them in `data/strava_cache.sqlite`.
+3. Train Random Forest models for cycling and running data.
+4. Save trained models in the `models/` directory.
+5. Ask for a sport, route distance, and elevation gain.
+6. Display the predicted tour results.
+
+Example console output:
+
+```text
+========================================
+       Strava Tour Predictor
+========================================
+
+Sync finished: 42 activities cached.
+
+Training regression models...
+[RIDE] MAE -> Duration: 8.4 min | Energy: 96 kcal
+[RUN] MAE -> Duration: 3.1 min | Energy: 54 kcal
+
+Enter sport type (ride/run) [default: ride]: ride
+Enter route distance in km: 85
+Enter elevation gain in m: 920
+
+================ RESULT ================
+Sport:             Ride
+Distance / Elev:   85.0 km | 920.0 m
+Estimated Time:    3h 18m
+Estimated Energy:  2140 kcal
+Avg Speed:         25.8 km/h
+```
+
+If Strava credentials are missing, the application skips synchronization and uses any existing local data. At least five valid activities are required to train models for a sport.
+
+## Rate Limits and Privacy
+
+The application automatically monitors Strava API usage and pauses when the short-term rate-limit threshold is reached. Strava’s short-term API limit is 200 calls per 15 minutes.
+
+Activity data is stored locally in the SQLite database:
+
+```text
+data/strava_cache.sqlite
+```
+
+Trained models are stored locally as `joblib` files:
+
+```text
+models/
+```
+
+No activity data or trained models are uploaded by this application. Keep your Strava credentials private and never commit `.env` to the repository.
