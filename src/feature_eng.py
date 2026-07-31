@@ -5,6 +5,7 @@ import sqlite3
 import pandas as pd
 
 from src.config import DB_PATH
+from src.strava_client import ensure_db_schema
 
 
 SPORT_ALIASES = {
@@ -16,6 +17,7 @@ SPORT_ALIASES = {
 
 def available_sport_profiles() -> dict[str, tuple[str, ...]]:
     """Return English profiles with at least one matching cached Strava activity."""
+    ensure_db_schema(DB_PATH)
     with sqlite3.connect(DB_PATH) as conn:
         rows = conn.execute("SELECT DISTINCT type, sport_type FROM activities").fetchall()
     available_types = {value for row in rows for value in row if value}
@@ -34,6 +36,7 @@ def load_cleaned_data(
     power_data: bool | None = None,
 ) -> pd.DataFrame:
     """Load Strava activities and apply sport, activity, commute, gear and power filters."""
+    ensure_db_schema(DB_PATH)
     requested = SPORT_ALIASES.get(sport_type.lower(), (sport_type, f"Virtual{sport_type}"))
     type_clause = ""
     params: tuple[str, ...] = tuple(requested)

@@ -17,6 +17,37 @@ from src.config import (
 )
 
 
+def ensure_db_schema(db_path: Path = DB_PATH) -> None:
+    """Create the activities table and apply migrations to an existing cache."""
+    db_path = Path(db_path)
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """CREATE TABLE IF NOT EXISTS activities (
+                id INTEGER PRIMARY KEY, name TEXT, type TEXT,
+                sport_type TEXT, gear_id TEXT, commute INTEGER,
+                start_date INTEGER, distance REAL, moving_time INTEGER,
+                elapsed_time INTEGER, total_elevation_gain REAL,
+                kilojoules REAL, calories REAL, workout_type INTEGER,
+                average_watts REAL, weighted_average_watts REAL,
+                device_watts INTEGER, has_power INTEGER
+            )"""
+        )
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(activities)")}
+        migrations = {
+            "sport_type": "TEXT", "gear_id": "TEXT", "commute": "INTEGER",
+            "average_watts": "REAL", "weighted_average_watts": "REAL",
+            "device_watts": "INTEGER", "has_power": "INTEGER",
+        }
+        for column, definition in migrations.items():
+            if column not in columns:
+                conn.execute(f"ALTER TABLE activities ADD COLUMN {column} {definition}")
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_activities_start_date "
+            "ON activities(start_date)"
+        )
+
+
 class StravaClient:
     """Synchronize Strava activities into a local SQLite cache."""
 
@@ -30,32 +61,7 @@ class StravaClient:
 
     def _init_db(self) -> None:
         """Create the activities table and its useful indexes."""
-        self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute(
-                """CREATE TABLE IF NOT EXISTS activities (
-                    id INTEGER PRIMARY KEY, name TEXT, type TEXT,
-                    sport_type TEXT, gear_id TEXT, commute INTEGER,
-                    start_date INTEGER, distance REAL, moving_time INTEGER,
-                    elapsed_time INTEGER, total_elevation_gain REAL,
-                    kilojoules REAL, calories REAL, workout_type INTEGER,
-                    average_watts REAL, weighted_average_watts REAL,
-                    device_watts INTEGER, has_power INTEGER
-                )"""
-            )
-            columns = {row[1] for row in conn.execute("PRAGMA table_info(activities)")}
-            migrations = {
-                "sport_type": "TEXT", "gear_id": "TEXT", "commute": "INTEGER",
-                "average_watts": "REAL", "weighted_average_watts": "REAL",
-                "device_watts": "INTEGER", "has_power": "INTEGER",
-            }
-            for column, definition in migrations.items():
-                if column not in columns:
-                    conn.execute(f"ALTER TABLE activities ADD COLUMN {column} {definition}")
-            conn.execute(
-                "CREATE INDEX IF NOT EXISTS idx_activities_start_date "
-                "ON activities(start_date)"
-            )
+        ensure_db_schema(self.db_path)
 
     def refresh_access_token(self) -> None:
         """Obtain a fresh OAuth access token from the configured refresh token."""
