@@ -13,14 +13,23 @@ from src.model_trainer import train_models_for_sport
 SPORTS = {"ride": "Ride", "run": "Run"}
 
 
-def train_sport(sport_name: str, model_name: str) -> bool:
+def train_sport(
+    sport_name: str,
+    model_name: str,
+    distance_elevation_only: bool = False,
+) -> bool:
     """Load cleaned data and train one named model for one sport."""
     sport_type = SPORTS[sport_name]
     data = load_cleaned_data(sport_type)
     if data.empty:
         print(f"No valid {sport_name} activities found. Skipping.")
         return False
-    return train_models_for_sport(data, sport_name, model_name)
+    return train_models_for_sport(
+        data,
+        sport_name,
+        model_name,
+        distance_elevation_only=distance_elevation_only,
+    )
 
 
 def main() -> None:
@@ -31,6 +40,11 @@ def main() -> None:
         help="Sport for the model",
     )
     parser.add_argument("--name", help="Name of the model")
+    parser.add_argument(
+        "--distance-elevation-only",
+        action="store_true",
+        help="Train using only distance and elevation (omit elevation per km)",
+    )
     args = parser.parse_args()
 
     sport = args.sport or input("Sport type (ride/run): ").strip().lower()
@@ -43,7 +57,7 @@ def main() -> None:
         print("The model name cannot be empty.")
         model_name = input("Model name: ").strip()
 
-    train_sport(sport, model_name)
+    train_sport(sport, model_name, args.distance_elevation_only)
 
 
 if __name__ == "__main__":

@@ -12,7 +12,8 @@ from sklearn.model_selection import train_test_split
 
 from src.config import MODEL_DIR
 
-FEATURES = ["distance_km", "elevation_m", "gradient_pct", "elevation_per_km"]
+BASE_FEATURES = ["distance_km", "elevation_m"]
+FEATURES = BASE_FEATURES + ["elevation_per_km"]
 
 
 def train_models_for_sport(
@@ -20,15 +21,17 @@ def train_models_for_sport(
     sport_name: str,
     model_name: str,
     model_dir: Path = MODEL_DIR,
+    distance_elevation_only: bool = False,
 ) -> bool:
     """Train and save one named model containing duration and energy regressors."""
+    model_features = BASE_FEATURES if distance_elevation_only else FEATURES
     if len(df) < 5:
         print(f"Insufficient data ({len(df)} samples) to train models for '{sport_name}'.")
         return False
-    if not set(FEATURES + ["moving_time", "kcal_clean"]).issubset(df.columns):
+    if not set(model_features + ["moving_time", "kcal_clean"]).issubset(df.columns):
         raise ValueError("DataFrame is missing required model columns")
 
-    X = df[FEATURES]
+    X = df[model_features]
     y_time, y_kcal = df["moving_time"], df["kcal_clean"]
     X_train, X_test, time_train, time_test, kcal_train, kcal_test = train_test_split(
         X, y_time, y_kcal, test_size=0.2, random_state=42
@@ -56,8 +59,8 @@ def train_models_for_sport(
         },
         model_dir / f"{model_id}.joblib",
     )
-    duration_coefficients = dict(zip(FEATURES, model_time.coef_))
-    kcal_coefficients = dict(zip(FEATURES, model_kcal.coef_))
+    duration_coefficients = dict(zip(model_features, model_time.coef_))
+    kcal_coefficients = dict(zip(model_features, model_kcal.coef_))
     with (model_dir / f"{model_id}.txt").open("w", encoding="utf-8") as metadata_file:
         json.dump(
             {
@@ -65,7 +68,7 @@ def train_models_for_sport(
                 "model_name": model_name.strip(),
                 "sport_type": sport_name.lower(),
                 "model_file": f"{model_id}.joblib",
-                "features": FEATURES,
+                "features": model_features,
                 "duration_intercept_seconds": float(model_time.intercept_),
                 "duration_coefficients": {
                     feature: float(coefficient)

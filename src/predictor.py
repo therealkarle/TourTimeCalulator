@@ -7,7 +7,6 @@ import joblib
 import pandas as pd
 
 from src.config import MODEL_DIR
-from src.model_trainer import FEATURES
 
 
 def list_models(model_dir=MODEL_DIR) -> list[dict[str, str]]:
@@ -43,12 +42,17 @@ def predict_tour(model_name: str, distance_km: float, elevation_m: float) -> dic
     if not model_path.exists():
         raise FileNotFoundError(f"Model file for '{model_name}' not found: {model_path}")
 
-    features = pd.DataFrame([{
+    feature_values = {
         "distance_km": distance_km,
         "elevation_m": elevation_m,
         "gradient_pct": elevation_m / (distance_km * 10.0),
         "elevation_per_km": elevation_m / distance_km,
-    }], columns=FEATURES)
+    }
+    model_features = selected.get(
+        "features",
+        ["distance_km", "elevation_m", "gradient_pct", "elevation_per_km"],
+    )
+    features = pd.DataFrame([{feature: feature_values[feature] for feature in model_features}])
     trained_model = joblib.load(model_path)
     predicted_seconds = max(0.0, float(trained_model["time_model"].predict(features)[0]))
     predicted_kcal = max(0.0, float(trained_model["kcal_model"].predict(features)[0]))

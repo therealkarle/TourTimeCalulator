@@ -139,6 +139,8 @@ direkt übergeben werden:
 ```bash
 python -m scripts.train_models --sport ride --name "Rennrad Grundlagen"
 python -m scripts.train_models --sport run --name "Lauftraining 2026"
+# Optional: train with only distance and elevation
+python -m scripts.train_models --sport ride --name "Nur Distanz und Höhenmeter" --distance-elevation-only
 ```
 
 Das trainierte Modell wird technisch als Joblib-Datei gespeichert, weil ein
