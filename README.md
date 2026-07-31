@@ -139,8 +139,15 @@ direkt übergeben werden:
 ```bash
 python -m scripts.train_models --sport ride --name "Ride training"
 python -m scripts.train_models --sport mtb-ride --name "MTB training"
-# Optional: train with only distance and elevation
-python -m scripts.train_models --sport ride --name "Nur Distanz und Höhenmeter" --distance-elevation-only
+# Example training variations for non-commute rides:
+# 1. Distance and elevation only
+python -m scripts.train_models --sport ride --name "Ride non-commute distance-elevation" --no-commute --distance-elevation-only
+# 2. Distance, elevation, and elevation per km
+python -m scripts.train_models --sport ride --name "Ride non-commute with elevation-per-km" --no-commute
+# 3. Power data, distance, and elevation only
+python -m scripts.train_models --sport ride --name "Ride non-commute power distance-elevation" --no-commute --power-data available --distance-elevation-only
+# 4. Power data, distance, elevation, and elevation per km
+python -m scripts.train_models --sport ride --name "Ride non-commute power with elevation-per-km" --no-commute --power-data available
 # Sportartspezifisch und mit Strava-Filtern:
 python -m scripts.train_models --sport gravel --name "Gravel without commute" --no-commute
 python -m scripts.train_models --sport mtb-ride --name "MTB with power" --power-data available
