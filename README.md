@@ -53,6 +53,12 @@ Windows PowerShell:
 .\venv\Scripts\Activate.ps1
 ```
 
+On Windows, the environment can also be created explicitly with:
+
+```powershell
+py -3.14 -m venv venv
+```
+
 macOS/Linux:
 
 ```bash
