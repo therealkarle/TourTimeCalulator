@@ -113,6 +113,44 @@ anderer Port über `--port` angegeben werden.
 
 ## Usage
 
+Die drei Arbeitsschritte können unabhängig voneinander ausgeführt werden. Dadurch
+müssen die Modelle nicht bei jeder Schätzung neu trainiert werden.
+
+### 1. Strava-Daten aktualisieren
+
+```bash
+python -m scripts.sync_strava
+```
+
+Die Aktivitäten werden in `data/strava_cache.sqlite` gespeichert. Beim nächsten
+Aufruf werden nur Aktivitäten seit dem letzten Cache-Eintrag abgefragt.
+
+### 2. Regressionsmodelle trainieren
+
+```bash
+python -m scripts.train_models                 # Radfahren und Laufen
+python -m scripts.train_models --sport ride    # nur Radfahren
+python -m scripts.train_models --sport run     # nur Laufen
+```
+
+Die Modelle werden in `models/` als Joblib-Dateien gespeichert.
+
+### 3. Tourdauer schätzen
+
+Interaktiv:
+
+```bash
+python -m scripts.estimate_tour_duration
+```
+
+Oder mit Kommandozeilenargumenten:
+
+```bash
+python -m scripts.estimate_tour_duration --sport ride --distance-km 85 --elevation-m 920
+```
+
+## Gesamter Workflow
+
 Launch the interactive command-line application:
 
 ```bash
