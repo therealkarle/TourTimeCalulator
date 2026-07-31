@@ -25,5 +25,7 @@ def load_cleaned_data(sport_type: str = "Ride") -> pd.DataFrame:
     frame = frame[(frame["moving_time"] / frame["elapsed_time"]) > 0.70]
     frame["gradient_pct"] = frame["elevation_m"] / (frame["distance_km"] * 10.0)
     frame["elevation_per_km"] = frame["elevation_m"] / frame["distance_km"]
-    frame["kcal_clean"] = frame["kilojoules"].fillna(frame["calories"])
+    kilojoules = pd.to_numeric(frame["kilojoules"], errors="coerce")
+    calories = pd.to_numeric(frame["calories"], errors="coerce")
+    frame["kcal_clean"] = kilojoules.fillna(calories)
     return frame.dropna(subset=["moving_time", "kcal_clean"])

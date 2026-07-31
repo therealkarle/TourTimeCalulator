@@ -1,5 +1,11 @@
 """Download new Strava activities and keep the local cache up to date."""
 
+import sys
+from pathlib import Path
+
+# Also support: python scripts/sync_strava.py
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 from src.strava_client import StravaClient
 
 

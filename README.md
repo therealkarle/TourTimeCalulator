@@ -1,6 +1,6 @@
 # Tour Time Calculator
 
-Tour Time Calculator is a Python application that uses historical Strava activities to predict route duration, calorie burn, and average speed. It stores activity data locally in SQLite and trains Random Forest regression models separately for cycling and running activities.
+Tour Time Calculator is a Python application that uses historical Strava activities to predict route duration, calorie burn, and average speed. It stores activity data locally in SQLite and trains linear regression models separately for cycling and running activities.
 
 ## Strava API Credentials Setup
 
@@ -125,15 +125,26 @@ python -m scripts.sync_strava
 Die Aktivitäten werden in `data/strava_cache.sqlite` gespeichert. Beim nächsten
 Aufruf werden nur Aktivitäten seit dem letzten Cache-Eintrag abgefragt.
 
-### 2. Regressionsmodelle trainieren
+### 2. Ein benanntes Regressionsmodell trainieren
+
+Interaktiv:
 
 ```bash
-python -m scripts.train_models                 # Radfahren und Laufen
-python -m scripts.train_models --sport ride    # nur Radfahren
-python -m scripts.train_models --sport run     # nur Laufen
+python -m scripts.train_models
 ```
 
-Die Modelle werden in `models/` als Joblib-Dateien gespeichert.
+Das Skript fragt nach Sportart und Modellnamen. Alternativ können beide Werte
+direkt übergeben werden:
+
+```bash
+python -m scripts.train_models --sport ride --name "Rennrad Grundlagen"
+python -m scripts.train_models --sport run --name "Lauftraining 2026"
+```
+
+Das trainierte Modell wird technisch als Joblib-Datei gespeichert, weil ein
+Random-Forest-Modell nicht direkt als Textdatei ausführbar gespeichert werden
+kann. Die zugehörige Beschreibung, der Name und die Auswahlkennung werden als
+lesbare `.txt`-Datei in `models/` gespeichert.
 
 ### 3. Tourdauer schätzen
 
@@ -146,8 +157,10 @@ python -m scripts.estimate_tour_duration
 Oder mit Kommandozeilenargumenten:
 
 ```bash
-python -m scripts.estimate_tour_duration --sport ride --distance-km 85 --elevation-m 920
+python -m scripts.estimate_tour_duration --model rennrad_grundlagen --distance-km 85 --elevation-m 920
 ```
+
+Ohne `--model` zeigt das Skript alle verfügbaren Modelle zur Auswahl an.
 
 ## Gesamter Workflow
 
@@ -161,7 +174,7 @@ The application will:
 
 1. Synchronize new Strava activities.
 2. Store them in `data/strava_cache.sqlite`.
-3. Train Random Forest models for cycling and running data.
+3. Train linear regression models for cycling and running data.
 4. Save trained models in the `models/` directory.
 5. Ask for a sport, route distance, and elevation gain.
 6. Display the predicted tour results.

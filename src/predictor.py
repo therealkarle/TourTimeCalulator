@@ -1,5 +1,6 @@
 """Inference for planned tours."""
 
+import json
 from typing import Any
 
 import joblib
@@ -9,18 +10,38 @@ from src.config import MODEL_DIR
 from src.model_trainer import FEATURES
 
 
-def predict_tour(sport_type: str, distance_km: float, elevation_m: float) -> dict[str, Any]:
-    """Predict duration, calories, and average speed for a planned tour."""
-    sport_key = sport_type.strip().lower()
-    if sport_key not in {"ride", "run"}:
-        raise ValueError("sport_type must be 'ride' or 'run'")
+def list_models(model_dir=MODEL_DIR) -> list[dict[str, str]]:
+    """Return the named models registered in the models directory."""
+    models = []
+    for metadata_path in sorted(model_dir.glob("*.txt")):
+        try:
+            with metadata_path.open(encoding="utf-8") as metadata_file:
+                metadata = json.load(metadata_file)
+            metadata["metadata_file"] = str(metadata_path)
+            models.append(metadata)
+        except (OSError, json.JSONDecodeError):
+            continue
+    return models
+
+
+def predict_tour(model_name: str, distance_km: float, elevation_m: float) -> dict[str, Any]:
+    """Predict a tour using only the selected named model."""
     if distance_km <= 0 or elevation_m < 0:
         raise ValueError("distance_km must be positive and elevation_m cannot be negative")
 
-    time_path = MODEL_DIR / f"{sport_key}_time.joblib"
-    kcal_path = MODEL_DIR / f"{sport_key}_kcal.joblib"
-    if not time_path.exists() or not kcal_path.exists():
-        raise FileNotFoundError(f"Trained models for '{sport_key}' not found in {MODEL_DIR}")
+    selected = next(
+        (
+            model
+            for model in list_models()
+            if model.get("model_id") == model_name or model.get("model_name") == model_name
+        ),
+        None,
+    )
+    if selected is None:
+        raise FileNotFoundError(f"Model '{model_name}' not found in {MODEL_DIR}")
+    model_path = MODEL_DIR / selected["model_file"]
+    if not model_path.exists():
+        raise FileNotFoundError(f"Model file for '{model_name}' not found: {model_path}")
 
     features = pd.DataFrame([{
         "distance_km": distance_km,
@@ -28,13 +49,15 @@ def predict_tour(sport_type: str, distance_km: float, elevation_m: float) -> dic
         "gradient_pct": elevation_m / (distance_km * 10.0),
         "elevation_per_km": elevation_m / distance_km,
     }], columns=FEATURES)
-    predicted_seconds = max(0.0, float(joblib.load(time_path).predict(features)[0]))
-    predicted_kcal = max(0.0, float(joblib.load(kcal_path).predict(features)[0]))
+    trained_model = joblib.load(model_path)
+    predicted_seconds = max(0.0, float(trained_model["time_model"].predict(features)[0]))
+    predicted_kcal = max(0.0, float(trained_model["kcal_model"].predict(features)[0]))
     hours, remainder = divmod(round(predicted_seconds), 3600)
     minutes = remainder // 60
     speed = distance_km / (predicted_seconds / 3600) if predicted_seconds else 0.0
     return {
-        "sport_type": sport_key,
+        "model_name": selected["model_name"],
+        "sport_type": selected["sport_type"],
         "distance_km": distance_km,
         "elevation_m": elevation_m,
         "predicted_time": f"{hours}h {minutes:02d}m",

@@ -4,3 +4,4 @@ models/*.joblib
 __pycache__/
 *.pyc
 .vscode/
+models/*.txt
