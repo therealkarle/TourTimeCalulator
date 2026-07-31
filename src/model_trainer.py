@@ -22,6 +22,7 @@ def train_models_for_sport(
     model_name: str,
     model_dir: Path = MODEL_DIR,
     distance_elevation_only: bool = False,
+    filters: dict | None = None,
 ) -> bool:
     """Train and save one named model containing duration and energy regressors."""
     model_features = BASE_FEATURES if distance_elevation_only else FEATURES
@@ -69,6 +70,7 @@ def train_models_for_sport(
                 "sport_type": sport_name.lower(),
                 "model_file": f"{model_id}.joblib",
                 "features": model_features,
+                "filters": filters or {},
                 "duration_intercept_seconds": float(model_time.intercept_),
                 "duration_coefficients": {
                     feature: float(coefficient)

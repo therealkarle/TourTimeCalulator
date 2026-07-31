@@ -35,11 +35,23 @@ class StravaClient:
             conn.execute(
                 """CREATE TABLE IF NOT EXISTS activities (
                     id INTEGER PRIMARY KEY, name TEXT, type TEXT,
+                    sport_type TEXT, gear_id TEXT, commute INTEGER,
                     start_date INTEGER, distance REAL, moving_time INTEGER,
                     elapsed_time INTEGER, total_elevation_gain REAL,
-                    kilojoules REAL, calories REAL, workout_type INTEGER
+                    kilojoules REAL, calories REAL, workout_type INTEGER,
+                    average_watts REAL, weighted_average_watts REAL,
+                    device_watts INTEGER, has_power INTEGER
                 )"""
             )
+            columns = {row[1] for row in conn.execute("PRAGMA table_info(activities)")}
+            migrations = {
+                "sport_type": "TEXT", "gear_id": "TEXT", "commute": "INTEGER",
+                "average_watts": "REAL", "weighted_average_watts": "REAL",
+                "device_watts": "INTEGER", "has_power": "INTEGER",
+            }
+            for column, definition in migrations.items():
+                if column not in columns:
+                    conn.execute(f"ALTER TABLE activities ADD COLUMN {column} {definition}")
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_activities_start_date "
                 "ON activities(start_date)"
@@ -117,16 +129,24 @@ class StravaClient:
                 for activity in activities:
                     conn.execute(
                         """INSERT OR REPLACE INTO activities
-                        (id, name, type, start_date, distance, moving_time,
+                        (id, name, type, sport_type, gear_id, commute, start_date, distance, moving_time,
                          elapsed_time, total_elevation_gain, kilojoules,
-                         calories, workout_type)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                         calories, workout_type, average_watts, weighted_average_watts,
+                         device_watts, has_power)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                         (
                             activity["id"], activity.get("name", ""), activity.get("type", ""),
+                            activity.get("sport_type") or activity.get("type", ""),
+                            activity.get("gear_id"),
+                            int(bool(activity.get("commute", False))),
                             self._parse_start_date(activity), activity.get("distance", 0.0),
                             activity.get("moving_time", 0), activity.get("elapsed_time", 0),
                             activity.get("total_elevation_gain", 0.0), activity.get("kilojoules"),
                             activity.get("calories"), activity.get("workout_type"),
+                            activity.get("average_watts"), activity.get("weighted_average_watts"),
+                            int(bool(activity.get("device_watts", False))),
+                            int(any(activity.get(field) is not None for field in
+                                    ("average_watts", "weighted_average_watts"))),
                         ),
                     )
                     new_records += 1

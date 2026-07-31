@@ -137,11 +137,27 @@ Das Skript fragt nach Sportart und Modellnamen. Alternativ können beide Werte
 direkt übergeben werden:
 
 ```bash
-python -m scripts.train_models --sport ride --name "Rennrad Grundlagen"
-python -m scripts.train_models --sport run --name "Lauftraining 2026"
+python -m scripts.train_models --sport ride --name "Ride training"
+python -m scripts.train_models --sport mtb-ride --name "MTB training"
 # Optional: train with only distance and elevation
 python -m scripts.train_models --sport ride --name "Nur Distanz und Höhenmeter" --distance-elevation-only
+# Sportartspezifisch und mit Strava-Filtern:
+python -m scripts.train_models --sport gravel --name "Gravel without commute" --no-commute
+python -m scripts.train_models --sport mtb-ride --name "MTB with power" --power-data available
+python -m scripts.train_models --sport ride --name "Ride training" --activity-type Ride --equipment g123
 ```
+
+Unterstützte Sportprofile sind `ride`, `rennrad`, `gravelbike`, `mtb` und `run`.
+Zusätzlich können Strava-Aktivitätstypen, `gear_id`, `--commute` bzw.
+`--no-commute` und `--power-data available|missing` gefiltert werden. Power-Daten
+gelten als verfügbar, wenn Strava `average_watts`, `weighted_average_watts` oder
+`device_watts` liefert.
+
+The available English sport profiles are `ride`, `mtb-ride` and `gravel`. The
+training command validates them against the
+activity types in the local Strava cache and only offers profiles with matching
+activities. It also supports activity type, `gear_id`, commute and power-data
+filters.
 
 Das trainierte Modell wird technisch als Joblib-Datei gespeichert, weil ein
 Random-Forest-Modell nicht direkt als Textdatei ausführbar gespeichert werden
