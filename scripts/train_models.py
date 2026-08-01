@@ -2,6 +2,7 @@
 
 import argparse
 import sys
+from datetime import date
 from pathlib import Path
 
 # Also support: python scripts/train_models.py
@@ -21,9 +22,19 @@ def train_sport(
     commute: bool | None = None,
     equipment: list[str] | None = None,
     power_data: bool | None = None,
+    min_distance_km: float | None = 3.0,
+    max_distance_km: float | None = None,
+    min_elevation_m: float | None = None,
+    max_elevation_m: float | None = None,
+    start_date: date | None = None,
+    end_date: date | None = None,
 ) -> bool:
     """Load cleaned data and train one named model for one sport."""
-    data = load_cleaned_data(sport_name, activity_types, commute, equipment, power_data)
+    data = load_cleaned_data(
+        sport_name, activity_types, commute, equipment, power_data,
+        min_distance_km, max_distance_km, min_elevation_m, max_elevation_m,
+        start_date, end_date,
+    )
     if data.empty:
         print(f"No valid Strava activities found for '{sport_name}'. Skipping.")
         return False
@@ -33,7 +44,10 @@ def train_sport(
         model_name,
         distance_elevation_only=distance_elevation_only,
         filters={"activity_types": activity_types, "commute": commute, "equipment": equipment,
-                 "power_data": power_data},
+                 "power_data": power_data, "min_distance_km": min_distance_km,
+                 "max_distance_km": max_distance_km, "min_elevation_m": min_elevation_m,
+                 "max_elevation_m": max_elevation_m, "start_date": start_date.isoformat() if start_date else None,
+                 "end_date": end_date.isoformat() if end_date else None},
     )
 
 
@@ -57,6 +71,12 @@ def main() -> None:
     commute_group.add_argument("--no-commute", action="store_true", help="Pendelfahrten ausschließen")
     parser.add_argument("--equipment", action="append", help="Strava gear_id; mehrfach verwendbar")
     parser.add_argument("--power-data", choices=["any", "available", "missing"], default="any")
+    parser.add_argument("--min-distance-km", type=non_negative_float, default=3.0)
+    parser.add_argument("--max-distance-km", type=non_negative_float)
+    parser.add_argument("--min-elevation-m", type=non_negative_float)
+    parser.add_argument("--max-elevation-m", type=non_negative_float)
+    parser.add_argument("--start-date", type=iso_date, metavar="YYYY-MM-DD")
+    parser.add_argument("--end-date", type=iso_date, metavar="YYYY-MM-DD")
     args = parser.parse_args()
 
     detected = available_sport_profiles()
@@ -75,8 +95,42 @@ def main() -> None:
 
     power_data = {"any": None, "available": True, "missing": False}[args.power_data]
     commute = True if args.commute else False if args.no_commute else None
-    train_sport(sport, model_name, args.distance_elevation_only, args.activity_types,
-                commute, args.equipment, power_data)
+    if (args.max_distance_km is not None and
+            args.min_distance_km is not None and
+            args.min_distance_km > args.max_distance_km):
+        parser.error("--min-distance-km cannot be greater than --max-distance-km")
+    if (args.max_elevation_m is not None and
+            args.min_elevation_m is not None and
+            args.min_elevation_m > args.max_elevation_m):
+        parser.error("--min-elevation-m cannot be greater than --max-elevation-m")
+    if (args.start_date is not None and args.end_date is not None and
+            args.start_date > args.end_date):
+        parser.error("--start-date cannot be after --end-date")
+
+    train_sport(
+        sport, model_name, args.distance_elevation_only, args.activity_types,
+        commute, args.equipment, power_data,
+        min_distance_km=args.min_distance_km,
+        max_distance_km=args.max_distance_km,
+        min_elevation_m=args.min_elevation_m,
+        max_elevation_m=args.max_elevation_m,
+        start_date=args.start_date,
+        end_date=args.end_date,
+    )
+
+
+def non_negative_float(value: str) -> float:
+    parsed = float(value)
+    if parsed < 0:
+        raise argparse.ArgumentTypeError("value cannot be negative")
+    return parsed
+
+
+def iso_date(value: str) -> date:
+    try:
+        return date.fromisoformat(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("date must use YYYY-MM-DD format") from exc
 
 
 if __name__ == "__main__":

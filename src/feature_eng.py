@@ -1,6 +1,7 @@
 """Cleaning and feature engineering for cached activities."""
 
 import sqlite3
+from datetime import date, datetime, time, timedelta, timezone
 
 import pandas as pd
 
@@ -34,8 +35,18 @@ def load_cleaned_data(
     commute: bool | None = None,
     equipment: list[str] | None = None,
     power_data: bool | None = None,
+    min_distance_km: float | None = 3.0,
+    max_distance_km: float | None = None,
+    min_elevation_m: float | None = None,
+    max_elevation_m: float | None = None,
+    start_date: date | None = None,
+    end_date: date | None = None,
 ) -> pd.DataFrame:
-    """Load Strava activities and apply sport, activity, commute, gear and power filters."""
+    """Load Strava activities and apply training filters."""
+    _validate_filter_ranges(
+        min_distance_km, max_distance_km, min_elevation_m, max_elevation_m,
+        start_date, end_date,
+    )
     ensure_db_schema(DB_PATH)
     requested = SPORT_ALIASES.get(sport_type.lower(), (sport_type, f"Virtual{sport_type}"))
     type_clause = ""
@@ -53,9 +64,22 @@ def load_cleaned_data(
     if frame.empty:
         return frame
 
-    frame["distance_km"] = frame["distance"] / 1000.0
+    frame["distance_km"] = pd.to_numeric(frame["distance"], errors="coerce") / 1000.0
     frame["elevation_m"] = frame["total_elevation_gain"].fillna(0.0)
-    frame = frame[(frame["distance_km"] >= 3.0) & (frame["moving_time"] > 0)]
+    frame["elevation_m"] = pd.to_numeric(frame["elevation_m"], errors="coerce")
+    if min_distance_km is not None:
+        frame = frame[frame["distance_km"] >= min_distance_km]
+    if max_distance_km is not None:
+        frame = frame[frame["distance_km"] <= max_distance_km]
+    if min_elevation_m is not None:
+        frame = frame[frame["elevation_m"] >= min_elevation_m]
+    if max_elevation_m is not None:
+        frame = frame[frame["elevation_m"] <= max_elevation_m]
+    if start_date is not None:
+        frame = frame[frame["start_date"] >= _utc_timestamp(start_date)]
+    if end_date is not None:
+        frame = frame[frame["start_date"] < _utc_timestamp(end_date + timedelta(days=1))]
+    frame = frame[frame["moving_time"] > 0]
     frame = frame[frame["elapsed_time"] > 0]
     frame = frame[(frame["moving_time"] / frame["elapsed_time"]) > 0.70]
     frame["gradient_pct"] = frame["elevation_m"] / (frame["distance_km"] * 10.0)
@@ -81,3 +105,31 @@ def load_cleaned_data(
     )
     frame["average_hr_bpm"] = pd.to_numeric(frame["average_heartrate"], errors="coerce")
     return frame.dropna(subset=["moving_time", "kcal_clean"])
+
+
+def _validate_filter_ranges(
+    min_distance_km: float | None,
+    max_distance_km: float | None,
+    min_elevation_m: float | None,
+    max_elevation_m: float | None,
+    start_date: date | None,
+    end_date: date | None,
+) -> None:
+    for name, value in (
+        ("min_distance_km", min_distance_km),
+        ("max_distance_km", max_distance_km),
+        ("min_elevation_m", min_elevation_m),
+        ("max_elevation_m", max_elevation_m),
+    ):
+        if value is not None and value < 0:
+            raise ValueError(f"{name} cannot be negative")
+    if min_distance_km is not None and max_distance_km is not None and min_distance_km > max_distance_km:
+        raise ValueError("min_distance_km cannot be greater than max_distance_km")
+    if min_elevation_m is not None and max_elevation_m is not None and min_elevation_m > max_elevation_m:
+        raise ValueError("min_elevation_m cannot be greater than max_elevation_m")
+    if start_date is not None and end_date is not None and start_date > end_date:
+        raise ValueError("start_date cannot be after end_date")
+
+
+def _utc_timestamp(value: date) -> int:
+    return int(datetime.combine(value, time.min, tzinfo=timezone.utc).timestamp())

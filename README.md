@@ -152,6 +152,11 @@ python -m scripts.train_models --sport ride --name "Ride non-commute power with 
 python -m scripts.train_models --sport gravel --name "Gravel without commute" --no-commute
 python -m scripts.train_models --sport mtb-ride --name "MTB with power" --power-data available
 python -m scripts.train_models --sport ride --name "Ride training" --activity-type Ride --equipment g123
+# Filter by distance, elevation gain, and inclusive UTC dates:
+python -m scripts.train_models --sport ride --name "Summer 2025" \
+  --min-distance-km 40 --max-distance-km 150 \
+  --min-elevation-m 300 --max-elevation-m 2500 \
+  --start-date 2025-04-01 --end-date 2025-09-30
 ```
 
 Supported sport profiles are `ride`, `rennrad`, `gravelbike`, `mtb`, and `run`.
