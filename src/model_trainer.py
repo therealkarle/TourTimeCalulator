@@ -24,28 +24,58 @@ def train_models_for_sport(
     distance_elevation_only: bool = False,
     filters: dict | None = None,
 ) -> bool:
-    """Train and save one named model containing duration and energy regressors."""
+    """Train and save regressors for time, energy, power, and heart rate."""
     model_features = BASE_FEATURES if distance_elevation_only else FEATURES
     if len(df) < 5:
         print(f"Insufficient data ({len(df)} samples) to train models for '{sport_name}'.")
         return False
-    if not set(model_features + ["moving_time", "kcal_clean"]).issubset(df.columns):
+    if not set(model_features + ["moving_time", "elapsed_time", "kcal_clean"]).issubset(df.columns):
         raise ValueError("DataFrame is missing required model columns")
 
     X = df[model_features]
-    y_time, y_kcal = df["moving_time"], df["kcal_clean"]
-    X_train, X_test, time_train, time_test, kcal_train, kcal_test = train_test_split(
-        X, y_time, y_kcal, test_size=0.2, random_state=42
-    )
-    model_time = LinearRegression()
-    model_kcal = LinearRegression()
-    model_time.fit(X_train, time_train)
-    model_kcal.fit(X_train, kcal_train)
+    targets = {
+        "elapsed_time": "Elapsed time",
+        "moving_time": "Moving time",
+        "kcal_clean": "Energy",
+        "average_power_watts": "Average power",
+        "weighted_average_power_watts": "Weighted average power",
+        "average_hr_bpm": "Average heart rate",
+    }
+    models = {}
+    metrics = {}
+    for target, label in targets.items():
+        if target not in df or not df[target].notna().any():
+            continue
+        target_frame = pd.concat([X, df[target]], axis=1).dropna()
+        if len(target_frame) < 5:
+            continue
+        target_X = target_frame[model_features]
+        target_y = target_frame[target]
+        X_train, X_test, y_train, y_test = train_test_split(
+            target_X, target_y, test_size=0.2, random_state=42
+        )
+        model = LinearRegression().fit(X_train, y_train)
+        models[target] = model
+        metrics[target] = mean_absolute_error(y_test, model.predict(X_test))
+
+    required_targets = {"elapsed_time", "moving_time", "kcal_clean"}
+    if not required_targets.issubset(models):
+        print(f"Insufficient complete data to train time and energy models for '{sport_name}'.")
+        return False
     print(
-        f"[{sport_name.upper()}] MAE -> Duration: "
-        f"{mean_absolute_error(time_test, model_time.predict(X_test)) / 60:.1f} min | "
-        f"Energy: {mean_absolute_error(kcal_test, model_kcal.predict(X_test)):.0f} kcal"
+        f"[{sport_name.upper()}] MAE -> "
+        f"Elapsed: {metrics['elapsed_time'] / 60:.1f} min | "
+        f"Moving: {metrics['moving_time'] / 60:.1f} min | "
+        f"Energy: {metrics['kcal_clean']:.0f} kcal"
     )
+    optional_labels = {
+        "average_power_watts": "Avg power",
+        "weighted_average_power_watts": "Weighted avg power",
+        "average_hr_bpm": "Avg HR",
+    }
+    for target, label in optional_labels.items():
+        if target in metrics:
+            print(f"[{sport_name.upper()}] MAE -> {label}: {metrics[target]:.1f}")
     model_id = re.sub(r"[^a-zA-Z0-9_-]+", "_", model_name.strip()).strip("_-").lower()
     if not model_id:
         raise ValueError("model_name must contain at least one letter or number")
@@ -55,14 +85,24 @@ def train_models_for_sport(
         {
             "model_name": model_name.strip(),
             "sport_type": sport_name.lower(),
-            "time_model": model_time,
-            "kcal_model": model_kcal,
+            "models": models,
+            # Keep these aliases for callers of older model artifacts.
+            "time_model": models["moving_time"],
+            "kcal_model": models["kcal_clean"],
         },
         model_dir / f"{model_id}.joblib",
     )
-    duration_coefficients = dict(zip(model_features, model_time.coef_))
-    kcal_coefficients = dict(zip(model_features, model_kcal.coef_))
     with (model_dir / f"{model_id}.txt").open("w", encoding="utf-8") as metadata_file:
+        regressions = {}
+        for target, model in models.items():
+            regressions[target] = {
+                "intercept": float(model.intercept_),
+                "coefficients": {
+                    feature: float(coefficient)
+                    for feature, coefficient in zip(model_features, model.coef_)
+                },
+                "mae": float(metrics[target]),
+            }
         json.dump(
             {
                 "model_id": model_id,
@@ -71,16 +111,12 @@ def train_models_for_sport(
                 "model_file": f"{model_id}.joblib",
                 "features": model_features,
                 "filters": filters or {},
-                "duration_intercept_seconds": float(model_time.intercept_),
-                "duration_coefficients": {
-                    feature: float(coefficient)
-                    for feature, coefficient in duration_coefficients.items()
-                },
-                "kcal_intercept": float(model_kcal.intercept_),
-                "kcal_coefficients": {
-                    feature: float(coefficient)
-                    for feature, coefficient in kcal_coefficients.items()
-                },
+                "regressions": regressions,
+                # Preserve the original metadata names for existing tooling.
+                "duration_intercept_seconds": regressions["moving_time"]["intercept"],
+                "duration_coefficients": regressions["moving_time"]["coefficients"],
+                "kcal_intercept": regressions["kcal_clean"]["intercept"],
+                "kcal_coefficients": regressions["kcal_clean"]["coefficients"],
             },
             metadata_file,
             indent=2,

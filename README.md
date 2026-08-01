@@ -1,6 +1,6 @@
 # Tour Time Calculator
 
-Tour Time Calculator is a Python application that uses historical Strava activities to predict route duration, calorie burn, and average speed. It stores activity data locally in SQLite and trains linear regression models separately for cycling and running activities.
+Tour Time Calculator is a Python application that uses historical Strava activities to predict elapsed time, moving time, calorie burn, average speed, average power, weighted average power, and average heart rate. It stores activity data locally in SQLite and trains linear regression models separately for cycling and running activities.
 
 ## Strava API Credentials Setup
 
@@ -222,9 +222,13 @@ Enter elevation gain in m: 920
 ================ RESULT ================
 Sport:             Ride
 Distance / Elev:   85.0 km | 920.0 m
-Estimated Time:    3h 18m
+Elapsed Time:      3h 18m
+Moving Time:       3h 02m
 Estimated Energy:  2140 kcal
 Avg Speed:         25.8 km/h
+Average Power:     185 W
+Weighted Avg Power:203 W
+Average HR:        148 bpm
 ```
 
 If Strava credentials are missing, the application skips synchronization and uses any existing local data. At least five valid activities are required to train models for a sport.

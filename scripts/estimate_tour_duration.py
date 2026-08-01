@@ -43,9 +43,17 @@ def main() -> None:
     print(f"Model:             {result['model_name']}")
     print(f"Sport:             {result['sport_type'].capitalize()}")
     print(f"Distance / Elev:   {result['distance_km']} km | {result['elevation_m']} m")
-    print(f"Estimated Time:    {result['predicted_time']}")
+    print(f"Elapsed Time:      {result['predicted_time']}")
+    moving_hours, moving_remainder = divmod(result['predicted_moving_time_sec'], 3600)
+    print(f"Moving Time:       {moving_hours}h {moving_remainder // 60:02d}m")
     print(f"Estimated Energy:  {result['predicted_kcal']} kcal")
     print(f"Avg Speed:         {result['avg_speed_kmh']} km/h")
+    if result["average_power_watts"] is not None:
+        print(f"Average Power:     {result['average_power_watts']} W")
+    if result["weighted_average_power_watts"] is not None:
+        print(f"Weighted Avg Power:{result['weighted_average_power_watts']} W")
+    if result["average_hr_bpm"] is not None:
+        print(f"Average HR:        {result['average_hr_bpm']} bpm")
 
 
 if __name__ == "__main__":

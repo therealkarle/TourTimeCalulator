@@ -54,18 +54,54 @@ def predict_tour(model_name: str, distance_km: float, elevation_m: float) -> dic
     )
     features = pd.DataFrame([{feature: feature_values[feature] for feature in model_features}])
     trained_model = joblib.load(model_path)
-    predicted_seconds = max(0.0, float(trained_model["time_model"].predict(features)[0]))
-    predicted_kcal = max(0.0, float(trained_model["kcal_model"].predict(features)[0]))
-    hours, remainder = divmod(round(predicted_seconds), 3600)
+    regression_models = trained_model.get("models", {})
+    # Legacy artifacts only contain a moving-time model.
+    elapsed_model = regression_models.get("elapsed_time")
+    moving_model = regression_models.get("moving_time", trained_model.get("time_model"))
+    kcal_model = regression_models.get("kcal_clean", trained_model.get("kcal_model"))
+    if elapsed_model is None:
+        elapsed_model = moving_model
+    predicted_elapsed = max(0.0, float(elapsed_model.predict(features)[0]))
+    predicted_moving = min(
+        predicted_elapsed,
+        max(0.0, float(moving_model.predict(features)[0])),
+    )
+    predicted_kcal = max(0.0, float(kcal_model.predict(features)[0]))
+    predicted_average_power = _predict_optional(regression_models.get("average_power_watts"), features)
+    predicted_weighted_power = _predict_optional(
+        regression_models.get("weighted_average_power_watts"), features
+    )
+    predicted_avg_hr = _predict_optional(regression_models.get("average_hr_bpm"), features)
+    hours, remainder = divmod(round(predicted_elapsed), 3600)
     minutes = remainder // 60
-    speed = distance_km / (predicted_seconds / 3600) if predicted_seconds else 0.0
+    moving_hours = predicted_moving / 3600
+    speed = distance_km / moving_hours if moving_hours else 0.0
     return {
         "model_name": selected["model_name"],
         "sport_type": selected["sport_type"],
         "distance_km": distance_km,
         "elevation_m": elevation_m,
         "predicted_time": f"{hours}h {minutes:02d}m",
-        "predicted_time_sec": round(predicted_seconds),
+        "predicted_time_sec": round(predicted_elapsed),
+        "predicted_elapsed_time_sec": round(predicted_elapsed),
+        "predicted_moving_time_sec": round(predicted_moving),
         "predicted_kcal": round(predicted_kcal),
         "avg_speed_kmh": round(speed, 1),
+        "average_power_watts": _rounded_or_none(predicted_average_power),
+        "weighted_average_power_watts": _rounded_or_none(predicted_weighted_power),
+        "average_hr_bpm": _rounded_or_none(predicted_avg_hr),
+        "predicted_average_power_watts": _rounded_or_none(predicted_average_power),
+        "predicted_weighted_average_power_watts": _rounded_or_none(predicted_weighted_power),
+        "predicted_average_hr_bpm": _rounded_or_none(predicted_avg_hr),
     }
+
+
+def _predict_optional(model: Any, features: pd.DataFrame) -> float | None:
+    """Predict an optional metric, returning None when its model was not trained."""
+    if model is None:
+        return None
+    return max(0.0, float(model.predict(features)[0]))
+
+
+def _rounded_or_none(value: float | None) -> int | None:
+    return round(value) if value is not None else None

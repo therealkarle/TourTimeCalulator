@@ -30,14 +30,14 @@ def ensure_db_schema(db_path: Path = DB_PATH) -> None:
                 elapsed_time INTEGER, total_elevation_gain REAL,
                 kilojoules REAL, calories REAL, workout_type INTEGER,
                 average_watts REAL, weighted_average_watts REAL,
-                device_watts INTEGER, has_power INTEGER
+                device_watts INTEGER, average_heartrate REAL, has_power INTEGER
             )"""
         )
         columns = {row[1] for row in conn.execute("PRAGMA table_info(activities)")}
         migrations = {
             "sport_type": "TEXT", "gear_id": "TEXT", "commute": "INTEGER",
             "average_watts": "REAL", "weighted_average_watts": "REAL",
-            "device_watts": "INTEGER", "has_power": "INTEGER",
+            "device_watts": "INTEGER", "average_heartrate": "REAL", "has_power": "INTEGER",
         }
         for column, definition in migrations.items():
             if column not in columns:
@@ -138,8 +138,8 @@ class StravaClient:
                         (id, name, type, sport_type, gear_id, commute, start_date, distance, moving_time,
                          elapsed_time, total_elevation_gain, kilojoules,
                          calories, workout_type, average_watts, weighted_average_watts,
-                         device_watts, has_power)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                         device_watts, average_heartrate, has_power)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                         (
                             activity["id"], activity.get("name", ""), activity.get("type", ""),
                             activity.get("sport_type") or activity.get("type", ""),
@@ -151,6 +151,7 @@ class StravaClient:
                             activity.get("calories"), activity.get("workout_type"),
                             activity.get("average_watts"), activity.get("weighted_average_watts"),
                             int(bool(activity.get("device_watts", False))),
+                            activity.get("average_heartrate"),
                             int(any(activity.get(field) is not None for field in
                                     ("average_watts", "weighted_average_watts"))),
                         ),

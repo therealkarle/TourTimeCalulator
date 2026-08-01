@@ -75,4 +75,9 @@ def load_cleaned_data(
     kilojoules = pd.to_numeric(frame["kilojoules"], errors="coerce")
     calories = pd.to_numeric(frame["calories"], errors="coerce")
     frame["kcal_clean"] = kilojoules.fillna(calories)
+    frame["average_power_watts"] = pd.to_numeric(frame["average_watts"], errors="coerce")
+    frame["weighted_average_power_watts"] = pd.to_numeric(
+        frame["weighted_average_watts"], errors="coerce"
+    )
+    frame["average_hr_bpm"] = pd.to_numeric(frame["average_heartrate"], errors="coerce")
     return frame.dropna(subset=["moving_time", "kcal_clean"])
