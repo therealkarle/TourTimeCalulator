@@ -18,7 +18,7 @@ Tour Time Calculator is a Python application that uses historical Strava activit
 4. Save the application.
 5. Copy the generated **Client ID** and **Client Secret**.
 
-### Step 2: Obtain and store the Refresh Token
+### Step 2: Obtain and store the refresh token
 
 Set `STRAVA_CLIENT_ID` and `STRAVA_CLIENT_SECRET` in `.env`, then run:
 
@@ -97,44 +97,44 @@ STRAVA_REFRESH_TOKEN=your_refresh_token
 
 Do not commit `.env` to version control.
 
-### Refresh Token automatisch eintragen
+### Automatically obtain the refresh token
 
-Nach dem Eintragen von `STRAVA_CLIENT_ID` und `STRAVA_CLIENT_SECRET` kann der
-Refresh Token automatisch per OAuth geholt und in `.env` gespeichert werden:
+After adding `STRAVA_CLIENT_ID` and `STRAVA_CLIENT_SECRET`, the refresh token
+can be obtained automatically via OAuth and saved to `.env`:
 
 ```bash
 python scripts/get_strava_refresh_token.py
 ```
 
-Für das Script muss im Strava Developer Portal `localhost` als
-Authorization Callback Domain eingetragen sein. Standardmäßig verwendet es
-`http://localhost:8765/callback`. Falls der Port bereits belegt ist, kann ein
-anderer Port über `--port` angegeben werden.
+The Strava Developer Portal must have `localhost` configured as the
+Authorization Callback Domain. The script uses
+`http://localhost:8765/callback` by default. If the port is already in use, a
+different port can be specified with `--port`.
 
 ## Usage
 
-Die drei Arbeitsschritte können unabhängig voneinander ausgeführt werden. Dadurch
-müssen die Modelle nicht bei jeder Schätzung neu trainiert werden.
+The three steps can be run independently, so models do not need to be retrained
+for every estimate.
 
-### 1. Strava-Daten aktualisieren
+### 1. Update Strava data
 
 ```bash
 python -m scripts.sync_strava
 ```
 
-Die Aktivitäten werden in `data/strava_cache.sqlite` gespeichert. Beim nächsten
-Aufruf werden nur Aktivitäten seit dem letzten Cache-Eintrag abgefragt.
+Activities are stored in `data/strava_cache.sqlite`. On subsequent runs, only
+activities added since the latest cache entry are requested.
 
-### 2. Ein benanntes Regressionsmodell trainieren
+### 2. Train a named regression model
 
-Interaktiv:
+Interactively:
 
 ```bash
 python -m scripts.train_models
 ```
 
-Das Skript fragt nach Sportart und Modellnamen. Alternativ können beide Werte
-direkt übergeben werden:
+The script prompts for a sport and model name. Alternatively, both values can
+be provided directly:
 
 ```bash
 python -m scripts.train_models --sport ride --name "Ride training"
@@ -148,46 +148,44 @@ python -m scripts.train_models --sport ride --name "Ride non-commute with elevat
 python -m scripts.train_models --sport ride --name "Ride non-commute power distance-elevation" --no-commute --power-data available --distance-elevation-only
 # 4. Power data, distance, elevation, and elevation per km
 python -m scripts.train_models --sport ride --name "Ride non-commute power with elevation-per-km" --no-commute --power-data available
-# Sportartspezifisch und mit Strava-Filtern:
+# Sport-specific models with Strava filters:
 python -m scripts.train_models --sport gravel --name "Gravel without commute" --no-commute
 python -m scripts.train_models --sport mtb-ride --name "MTB with power" --power-data available
 python -m scripts.train_models --sport ride --name "Ride training" --activity-type Ride --equipment g123
 ```
 
-Unterstützte Sportprofile sind `ride`, `rennrad`, `gravelbike`, `mtb` und `run`.
-Zusätzlich können Strava-Aktivitätstypen, `gear_id`, `--commute` bzw.
-`--no-commute` und `--power-data available|missing` gefiltert werden. Power-Daten
-gelten als verfügbar, wenn Strava `average_watts`, `weighted_average_watts` oder
-`device_watts` liefert.
+Supported sport profiles are `ride`, `rennrad`, `gravelbike`, `mtb`, and `run`.
+You can also filter by Strava activity type, `gear_id`, `--commute` or
+`--no-commute`, and `--power-data available|missing`. Power data is considered
+available when Strava provides `average_watts`, `weighted_average_watts`, or
+`device_watts`.
 
-The available English sport profiles are `ride`, `mtb-ride` and `gravel`. The
-training command validates them against the
-activity types in the local Strava cache and only offers profiles with matching
-activities. It also supports activity type, `gear_id`, commute and power-data
-filters.
+The available English sport profiles are `ride`, `mtb-ride`, and `gravel`. The
+training command validates them against the activity types in the local Strava
+cache and only offers profiles with matching activities. It also supports
+activity type, `gear_id`, commute, and power-data filters.
 
-Das trainierte Modell wird technisch als Joblib-Datei gespeichert, weil ein
-Random-Forest-Modell nicht direkt als Textdatei ausführbar gespeichert werden
-kann. Die zugehörige Beschreibung, der Name und die Auswahlkennung werden als
-lesbare `.txt`-Datei in `models/` gespeichert.
+The trained model is stored as a Joblib file because a random-forest model cannot
+be stored as an executable text file. Its description, name, and selection key
+are stored in a readable `.txt` file in `models/`.
 
-### 3. Tourdauer schätzen
+### 3. Estimate tour duration
 
-Interaktiv:
+Interactively:
 
 ```bash
 python -m scripts.estimate_tour_duration
 ```
 
-Oder mit Kommandozeilenargumenten:
+Or with command-line arguments:
 
 ```bash
 python -m scripts.estimate_tour_duration --model rennrad_grundlagen --distance-km 85 --elevation-m 920
 ```
 
-Ohne `--model` zeigt das Skript alle verfügbaren Modelle zur Auswahl an.
+Without `--model`, the script displays all available models for selection.
 
-## Gesamter Workflow
+## Complete workflow
 
 Launch the interactive command-line application:
 
@@ -233,7 +231,7 @@ If Strava credentials are missing, the application skips synchronization and use
 
 ## Rate Limits and Privacy
 
-The application automatically monitors Strava API usage and pauses when the short-term rate-limit threshold is reached. Strava’s short-term API limit is 200 calls per 15 minutes.
+The application automatically monitors Strava API usage and pauses when the short-term rate-limit threshold is reached. Strava's short-term API limit is 200 calls per 15 minutes.
 
 Activity data is stored locally in the SQLite database:
 
