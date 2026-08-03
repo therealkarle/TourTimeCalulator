@@ -16,7 +16,7 @@ def main() -> None:
     sync_main()
 
     print("\nTraining a regression model...")
-    sport = input("Sport type (ride/run): ").strip().lower()
+    sport = input("Sport profile (ride/mtb-ride/gravel): ").strip().lower()
     model_name = input("Model name: ").strip()
     train_sport(sport, model_name)
     estimate_main()

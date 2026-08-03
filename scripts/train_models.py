@@ -65,11 +65,11 @@ def main() -> None:
         help="Train using only distance and elevation (omit elevation per km)",
     )
     parser.add_argument("--activity-type", action="append", dest="activity_types",
-                        help="Exakter Strava sport_type; mehrfach verwendbar")
+                        help="Exact Strava sport_type; may be specified multiple times")
     commute_group = parser.add_mutually_exclusive_group()
-    commute_group.add_argument("--commute", action="store_true", help="Nur Pendelaktivitäten")
-    commute_group.add_argument("--no-commute", action="store_true", help="Pendelfahrten ausschließen")
-    parser.add_argument("--equipment", action="append", help="Strava gear_id; mehrfach verwendbar")
+    commute_group.add_argument("--commute", action="store_true", help="Include commute activities only")
+    commute_group.add_argument("--no-commute", action="store_true", help="Exclude commute activities")
+    parser.add_argument("--equipment", action="append", help="Strava gear_id; may be specified multiple times")
     parser.add_argument("--power-data", choices=["any", "available", "missing"], default="any")
     parser.add_argument("--min-distance-km", type=non_negative_float, default=3.0)
     parser.add_argument("--max-distance-km", type=non_negative_float)
