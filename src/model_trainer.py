@@ -43,6 +43,7 @@ def train_models_for_sport(
     }
     models = {}
     metrics = {}
+    sample_counts = {}
     for target, label in targets.items():
         if target not in df or not df[target].notna().any():
             continue
@@ -57,11 +58,13 @@ def train_models_for_sport(
         model = LinearRegression().fit(X_train, y_train)
         models[target] = model
         metrics[target] = mean_absolute_error(y_test, model.predict(X_test))
+        sample_counts[target] = len(target_frame)
 
     required_targets = {"elapsed_time", "moving_time", "kcal_clean"}
     if not required_targets.issubset(models):
         print(f"Insufficient complete data to train time and energy models for '{sport_name}'.")
         return False
+    print(f"[{sport_name.upper()}] Activities used: {len(df)}")
     print(
         f"[{sport_name.upper()}] MAE -> "
         f"Elapsed: {metrics['elapsed_time'] / 60:.1f} min | "
@@ -76,6 +79,16 @@ def train_models_for_sport(
     for target, label in optional_labels.items():
         if target in metrics:
             print(f"[{sport_name.upper()}] MAE -> {label}: {metrics[target]:.1f}")
+    print(f"[{sport_name.upper()}] Coefficients:")
+    for target, model in models.items():
+        coefficients = ", ".join(
+            f"{feature}={coefficient:.6g}"
+            for feature, coefficient in zip(model_features, model.coef_)
+        )
+        print(
+            f"  {target} (n={sample_counts[target]}): "
+            f"intercept={model.intercept_:.6g}, {coefficients}"
+        )
     model_id = re.sub(r"[^a-zA-Z0-9_-]+", "_", model_name.strip()).strip("_-").lower()
     if not model_id:
         raise ValueError("model_name must contain at least one letter or number")
@@ -110,6 +123,8 @@ def train_models_for_sport(
                 "sport_type": sport_name.lower(),
                 "model_file": f"{model_id}.joblib",
                 "features": model_features,
+                "sample_count": len(df),
+                "sample_counts": sample_counts,
                 "filters": filters or {},
                 "regressions": regressions,
                 # Preserve the original metadata names for existing tooling.

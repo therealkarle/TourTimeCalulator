@@ -190,6 +190,22 @@ python -m scripts.estimate_tour_duration --model rennrad_grundlagen --distance-k
 
 Without `--model`, the script displays all available models for selection.
 
+### Modelle mit neuen Daten aktualisieren
+
+Alle vorhandenen Modelle können mit den in ihren Metadaten gespeicherten
+Filtern neu trainiert werden:
+
+```bash
+python -m scripts.update_models
+```
+
+Das Script synchronisiert zuerst neue Strava-Aktivitäten. Mit
+`--no-sync` wird ausschließlich der lokale Cache verwendet.
+
+Bei jedem Training werden die verwendete Aktivitätszahl und alle Koeffizienten
+angezeigt. Beim Aktualisieren werden zusätzlich die Änderungen gegenüber dem
+vorherigen Modell ausgegeben.
+
 ## Complete workflow
 
 Launch the interactive command-line application:
