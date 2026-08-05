@@ -14,7 +14,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", help="Name or ID of the trained model")
     parser.add_argument("--distance-km", type=float, help="Route distance in kilometres")
-    parser.add_argument("--elevation-m", type=float, help="Elevation gain in metres")
+    parser.add_argument("--elevation-m", type=float, help="Elevation gain in metres (legacy alias for ascent)")
+    parser.add_argument("--elevation-up-m", type=float, help="Elevation ascent in metres")
+    parser.add_argument("--elevation-down-m", type=float, help="Elevation descent in metres")
     args = parser.parse_args()
 
     try:
@@ -28,21 +30,38 @@ def main() -> None:
                 print(f"  {index}. {model['model_name']} ({model['sport_type']})")
             selected_index = int(input("Select model number: ")) - 1
             model_name = models[selected_index]["model_id"]
+        selected_model = next(
+            model for model in models
+            if model.get("model_id") == model_name or model.get("model_name") == model_name
+        )
         distance = args.distance_km
         if distance is None:
             distance = float(input("Route distance in km: "))
-        elevation = args.elevation_m
-        if elevation is None:
-            elevation = float(input("Elevation gain in m: "))
-        result = predict_tour(model_name, distance, elevation)
-    except (ValueError, FileNotFoundError, IndexError, KeyError) as error:
+        separate = "elevation_down_m" in selected_model.get("features", [])
+        if separate:
+            elevation = args.elevation_up_m if args.elevation_up_m is not None else args.elevation_m
+            if elevation is None:
+                elevation = float(input("Elevation ascent in m: "))
+            descent = args.elevation_down_m
+            if descent is None and not args.model:
+                raw_descent = input("Elevation descent in m (empty = ascent): ").strip()
+                descent = float(raw_descent) if raw_descent else elevation
+            elif descent is None:
+                descent = elevation
+        else:
+            elevation = args.elevation_m if args.elevation_m is not None else args.elevation_up_m
+            if elevation is None:
+                elevation = float(input("Elevation gain in m: "))
+            descent = None
+        result = predict_tour(model_name, distance, elevation, descent)
+    except (ValueError, FileNotFoundError, IndexError, KeyError, StopIteration) as error:
         print(f"Error: {error}", file=sys.stderr)
         raise SystemExit(1) from error
 
     print("\n================ RESULT ================")
     print(f"Model:             {result['model_name']}")
     print(f"Sport:             {result['sport_type'].capitalize()}")
-    print(f"Distance / Elev:   {result['distance_km']} km | {result['elevation_m']} m")
+    print(f"Distance / Elev:   {result['distance_km']} km | +{result['elevation_up_m']} m | -{result['elevation_down_m']} m")
     print(f"Elapsed Time:      {result['predicted_time']}")
     moving_hours, moving_remainder = divmod(result['predicted_moving_time_sec'], 3600)
     print(f"Moving Time:       {moving_hours}h {moving_remainder // 60:02d}m")

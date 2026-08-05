@@ -28,6 +28,7 @@ def train_sport(
     max_elevation_m: float | None = None,
     start_date: date | None = None,
     end_date: date | None = None,
+    separate_elevation: bool = False,
 ) -> bool:
     """Load cleaned data and train one named model for one sport."""
     data = load_cleaned_data(
@@ -48,6 +49,7 @@ def train_sport(
                  "max_distance_km": max_distance_km, "min_elevation_m": min_elevation_m,
                  "max_elevation_m": max_elevation_m, "start_date": start_date.isoformat() if start_date else None,
                  "end_date": end_date.isoformat() if end_date else None},
+        separate_elevation=separate_elevation,
     )
 
 
@@ -63,6 +65,11 @@ def main() -> None:
         "--distance-elevation-only",
         action="store_true",
         help="Train using only distance and elevation (omit elevation per km)",
+    )
+    parser.add_argument(
+        "--separate-elevation",
+        action="store_true",
+        help="Train using separate ascent and descent elevation features",
     )
     parser.add_argument("--activity-type", action="append", dest="activity_types",
                         help="Exact Strava sport_type; may be specified multiple times")
@@ -116,6 +123,7 @@ def main() -> None:
         max_elevation_m=args.max_elevation_m,
         start_date=args.start_date,
         end_date=args.end_date,
+        separate_elevation=args.separate_elevation,
     )
 
 

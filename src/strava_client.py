@@ -30,7 +30,8 @@ def ensure_db_schema(db_path: Path = DB_PATH) -> None:
                 elapsed_time INTEGER, total_elevation_gain REAL,
                 kilojoules REAL, calories REAL, workout_type INTEGER,
                 average_watts REAL, weighted_average_watts REAL,
-                device_watts INTEGER, average_heartrate REAL, has_power INTEGER
+                device_watts INTEGER, average_heartrate REAL, has_power INTEGER,
+                descent_elevation_m REAL, elevation_stream_checked INTEGER DEFAULT 0
             )"""
         )
         columns = {row[1] for row in conn.execute("PRAGMA table_info(activities)")}
@@ -38,6 +39,7 @@ def ensure_db_schema(db_path: Path = DB_PATH) -> None:
             "sport_type": "TEXT", "gear_id": "TEXT", "commute": "INTEGER",
             "average_watts": "REAL", "weighted_average_watts": "REAL",
             "device_watts": "INTEGER", "average_heartrate": "REAL", "has_power": "INTEGER",
+            "descent_elevation_m": "REAL", "elevation_stream_checked": "INTEGER DEFAULT 0",
         }
         for column, definition in migrations.items():
             if column not in columns:
@@ -103,6 +105,58 @@ class StravaClient:
         except (KeyError, TypeError, ValueError):
             return
 
+    def _get_elevation_stream(self, activity_id: int) -> list[float] | None:
+        """Fetch an activity's altitude stream, returning None when unavailable."""
+        response = requests.get(
+            f"{STRAVA_API_URL}/activities/{activity_id}/streams",
+            headers={"Authorization": f"Bearer {self.access_token}"},
+            params={"keys": "altitude", "key_by_type": "true"},
+            timeout=30,
+        )
+        if response.status_code == 429:
+            print("HTTP 429 rate limit hit. Retrying in 15 minutes...")
+            time.sleep(900)
+            return self._get_elevation_stream(activity_id)
+        if response.status_code in (403, 404):
+            return None
+        response.raise_for_status()
+        self._handle_rate_limits(response)
+        payload = response.json()
+        stream = payload.get("altitude") if isinstance(payload, dict) else None
+        if stream is None and isinstance(payload, list):
+            stream = next((item for item in payload if item.get("type") == "altitude"), None)
+        values = stream.get("data") if isinstance(stream, dict) else None
+        return [float(value) for value in values if value is not None] if values else None
+
+    @staticmethod
+    def _calculate_elevation_loss(altitudes: list[float] | None) -> float | None:
+        """Sum negative altitude changes from a Strava altitude stream."""
+        if not altitudes or len(altitudes) < 2:
+            return None
+        return sum(max(0.0, previous - current) for previous, current in zip(altitudes, altitudes[1:]))
+
+    def backfill_elevation_streams(self) -> int:
+        """Fill descent data for cached activities that have not been checked."""
+        if not all((self.client_id, self.client_secret, self.refresh_token)):
+            print("Strava credentials missing in .env file. Skipping elevation backfill.")
+            return 0
+        self.refresh_access_token()
+        with sqlite3.connect(self.db_path) as conn:
+            activity_ids = [row[0] for row in conn.execute(
+                "SELECT id FROM activities WHERE elevation_stream_checked = 0"
+            )]
+        updated = 0
+        for activity_id in activity_ids:
+            descent = self._calculate_elevation_loss(self._get_elevation_stream(activity_id))
+            with sqlite3.connect(self.db_path) as conn:
+                conn.execute(
+                    "UPDATE activities SET descent_elevation_m = ?, elevation_stream_checked = 1 WHERE id = ?",
+                    (descent, activity_id),
+                )
+            updated += 1
+        print(f"Elevation backfill finished: {updated} activities checked.")
+        return updated
+
     def sync_activities(self) -> int:
         """Fetch activities newer than the cache and return the insert count."""
         if not all((self.client_id, self.client_secret, self.refresh_token)):
@@ -138,8 +192,9 @@ class StravaClient:
                         (id, name, type, sport_type, gear_id, commute, start_date, distance, moving_time,
                          elapsed_time, total_elevation_gain, kilojoules,
                          calories, workout_type, average_watts, weighted_average_watts,
-                         device_watts, average_heartrate, has_power)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                         device_watts, average_heartrate, has_power, descent_elevation_m,
+                         elevation_stream_checked)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                         (
                             activity["id"], activity.get("name", ""), activity.get("type", ""),
                             activity.get("sport_type") or activity.get("type", ""),
@@ -154,6 +209,10 @@ class StravaClient:
                             activity.get("average_heartrate"),
                             int(any(activity.get(field) is not None for field in
                                     ("average_watts", "weighted_average_watts"))),
+                            self._calculate_elevation_loss(
+                                self._get_elevation_stream(activity["id"])
+                            ),
+                            1,
                         ),
                     )
                     new_records += 1

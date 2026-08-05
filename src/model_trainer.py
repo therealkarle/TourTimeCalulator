@@ -14,6 +14,7 @@ from src.config import MODEL_DIR
 
 BASE_FEATURES = ["distance_km", "elevation_m"]
 FEATURES = BASE_FEATURES + ["elevation_per_km"]
+SEPARATE_ELEVATION_FEATURES = ["distance_km", "elevation_up_m", "elevation_down_m"]
 
 
 def train_models_for_sport(
@@ -23,9 +24,13 @@ def train_models_for_sport(
     model_dir: Path = MODEL_DIR,
     distance_elevation_only: bool = False,
     filters: dict | None = None,
+    separate_elevation: bool = False,
 ) -> bool:
     """Train and save regressors for time, energy, power, and heart rate."""
-    model_features = BASE_FEATURES if distance_elevation_only else FEATURES
+    if separate_elevation:
+        model_features = SEPARATE_ELEVATION_FEATURES
+    else:
+        model_features = BASE_FEATURES if distance_elevation_only else FEATURES
     if len(df) < 5:
         print(f"Insufficient data ({len(df)} samples) to train models for '{sport_name}'.")
         return False
@@ -123,6 +128,7 @@ def train_models_for_sport(
                 "sport_type": sport_name.lower(),
                 "model_file": f"{model_id}.joblib",
                 "features": model_features,
+                "elevation_mode": "separate" if separate_elevation else "legacy",
                 "sample_count": len(df),
                 "sample_counts": sample_counts,
                 "filters": filters or {},

@@ -14,6 +14,7 @@ def main() -> None:
     print("Synchronizing Strava activities...")
     count = StravaClient().sync_activities()
     print(f"Done. {count} activities were added or updated.")
+    StravaClient().backfill_elevation_streams()
 
 
 if __name__ == "__main__":

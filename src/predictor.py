@@ -23,10 +23,15 @@ def list_models(model_dir=MODEL_DIR) -> list[dict[str, str]]:
     return models
 
 
-def predict_tour(model_name: str, distance_km: float, elevation_m: float) -> dict[str, Any]:
+def predict_tour(
+    model_name: str,
+    distance_km: float,
+    elevation_m: float,
+    descent_m: float | None = None,
+) -> dict[str, Any]:
     """Predict a tour using only the selected named model."""
-    if distance_km <= 0 or elevation_m < 0:
-        raise ValueError("distance_km must be positive and elevation_m cannot be negative")
+    if distance_km <= 0 or elevation_m < 0 or (descent_m is not None and descent_m < 0):
+        raise ValueError("distance_km must be positive and elevation values cannot be negative")
 
     selected = next(
         (
@@ -47,6 +52,8 @@ def predict_tour(model_name: str, distance_km: float, elevation_m: float) -> dic
         "elevation_m": elevation_m,
         "gradient_pct": elevation_m / (distance_km * 10.0),
         "elevation_per_km": elevation_m / distance_km,
+        "elevation_up_m": elevation_m,
+        "elevation_down_m": elevation_m if descent_m is None else descent_m,
     }
     model_features = selected.get(
         "features",
@@ -81,6 +88,8 @@ def predict_tour(model_name: str, distance_km: float, elevation_m: float) -> dic
         "sport_type": selected["sport_type"],
         "distance_km": distance_km,
         "elevation_m": elevation_m,
+        "elevation_up_m": elevation_m,
+        "elevation_down_m": feature_values["elevation_down_m"],
         "predicted_time": f"{hours}h {minutes:02d}m",
         "predicted_time_sec": round(predicted_elapsed),
         "predicted_elapsed_time_sec": round(predicted_elapsed),

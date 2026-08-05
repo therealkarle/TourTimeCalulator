@@ -67,6 +67,8 @@ def load_cleaned_data(
     frame["distance_km"] = pd.to_numeric(frame["distance"], errors="coerce") / 1000.0
     frame["elevation_m"] = frame["total_elevation_gain"].fillna(0.0)
     frame["elevation_m"] = pd.to_numeric(frame["elevation_m"], errors="coerce")
+    frame["elevation_up_m"] = frame["elevation_m"]
+    frame["elevation_down_m"] = pd.to_numeric(frame["descent_elevation_m"], errors="coerce")
     if min_distance_km is not None:
         frame = frame[frame["distance_km"] >= min_distance_km]
     if max_distance_km is not None:

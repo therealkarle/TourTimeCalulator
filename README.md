@@ -116,6 +116,9 @@ Or provide the sport and model name directly:
 python -m scripts.train_models --sport ride --name "Road cycling"
 python -m scripts.train_models --sport mtb-ride --name "Mountain biking"
 python -m scripts.train_models --sport gravel --name "Gravel riding"
+
+# Train a model with separate ascent and descent parameters
+python -m scripts.train_models --sport ride --name "Ascent and descent" --separate-elevation
 ```
 
 Supported sport profiles are `ride`, `mtb-ride`, and `gravel`. The command also supports filters for exact Strava activity types, gear, commuting, power data, distance, elevation, and inclusive UTC date ranges. Run the following for all options:
@@ -151,6 +154,13 @@ python -m scripts.estimate_tour_duration \
   --model <model-id> \
   --distance-km 85 \
   --elevation-m 920
+
+# For separate-elevation models:
+python -m scripts.estimate_tour_duration \
+  --model <model-id> \
+  --distance-km 85 \
+  --elevation-up-m 920 \
+  --elevation-down-m 880
 ```
 
 ### Update existing models

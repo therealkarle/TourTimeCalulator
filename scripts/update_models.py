@@ -47,6 +47,8 @@ def update_model(metadata_path: Path) -> bool:
         metadata.get("model_name", metadata_path.stem),
         distance_elevation_only=metadata.get("features") == BASE_FEATURES,
         filters=filters,
+        separate_elevation=metadata.get("elevation_mode") == "separate" or
+        "elevation_down_m" in metadata.get("features", []),
     )
     if not updated:
         return False
@@ -88,6 +90,8 @@ def main() -> int:
         print("Synchronizing Strava activities...")
         added = StravaClient().sync_activities()
         print(f"Done. {added} activities were added or updated.")
+
+    StravaClient().backfill_elevation_streams()
 
     metadata_files = sorted(MODEL_DIR.glob("*.txt"))
     if not metadata_files:
