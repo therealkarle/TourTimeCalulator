@@ -13,6 +13,9 @@ SPORT_ALIASES = {
     "ride": ("Ride", "VirtualRide"),
     "mtb-ride": ("MountainBikeRide", "EMountainBikeRide"),
     "gravel": ("GravelBikeRide",),
+    "hike": ("Hike",),
+    "run": ("Run", "VirtualRun"),
+    "trail_run": ("TrailRun",),
 }
 
 
