@@ -16,53 +16,97 @@ def get_last_365_days() -> tuple[date, date]:
     return today - timedelta(days=365), today
 
 
-# Define all 7 preset model configurations
+# Define all 7 preset model configurations with 365d and all variants
 PRESETS = {
-    "mountainStage_min1500hm_max150km_ride": {
+    "mountainStage_min1500hm_max150km_ride_365d": {
         "sport_type": "ride",
         "min_distance_km": 1.0,
         "max_distance_km": 150.0,
         "min_elevation_m": 1500.0,
+        "use_365d": True,
     },
-    "gravel": {
+    "mountainStage_min1500hm_max150km_ride_all": {
+        "sport_type": "ride",
+        "min_distance_km": 1.0,
+        "max_distance_km": 150.0,
+        "min_elevation_m": 1500.0,
+        "use_365d": False,
+    },
+    "gravel_365d": {
         "sport_type": "gravel",
         "min_distance_km": 3.0,
+        "use_365d": True,
     },
-    "ride_withpowerData": {
+    "gravel_all": {
+        "sport_type": "gravel",
+        "min_distance_km": 3.0,
+        "use_365d": False,
+    },
+    "ride_withpowerData_365d": {
         "sport_type": "ride",
         "min_distance_km": 3.0,
         "power_data": True,
+        "use_365d": True,
     },
-    "hike": {
+    "ride_withpowerData_all": {
+        "sport_type": "ride",
+        "min_distance_km": 3.0,
+        "power_data": True,
+        "use_365d": False,
+    },
+    "hike_365d": {
         "sport_type": "hike",
         "min_distance_km": 1.0,
+        "use_365d": True,
     },
-    "run": {
+    "hike_all": {
+        "sport_type": "hike",
+        "min_distance_km": 1.0,
+        "use_365d": False,
+    },
+    "run_365d": {
         "sport_type": "run",
         "min_distance_km": 1.0,
+        "use_365d": True,
     },
-    "trail_run": {
+    "run_all": {
+        "sport_type": "run",
+        "min_distance_km": 1.0,
+        "use_365d": False,
+    },
+    "trail_run_365d": {
         "sport_type": "trail_run",
         "min_distance_km": 1.0,
+        "use_365d": True,
     },
-    "ride_min100km": {
+    "trail_run_all": {
+        "sport_type": "trail_run",
+        "min_distance_km": 1.0,
+        "use_365d": False,
+    },
+    "ride_min100km_365d": {
         "sport_type": "ride",
         "min_distance_km": 100.0,
+        "use_365d": True,
+    },
+    "ride_min100km_all": {
+        "sport_type": "ride",
+        "min_distance_km": 100.0,
+        "use_365d": False,
     },
 }
 
 
 def train_all_presets(dry_run: bool = False) -> None:
-    """Train all preset models with dynamic 365-day window."""
-    start_date, end_date = get_last_365_days()
-    print(f"Training all presets with 365-day window: {start_date} to {end_date}\n")
+    """Train all preset models."""
+    print(f"\nTraining all presets\n")
 
     if dry_run:
         print("[DRY RUN] Would train the following presets:")
         for preset_name, config in PRESETS.items():
-            print(f"  - {preset_name}")
-            print(f"    Sport: {config['sport_type']}")
-            print(f"    Config: {config}")
+            use_365d = config.get("use_365d", True)
+            window = "last 365 days" if use_365d else "all data"
+            print(f"  - {preset_name} ({window})")
         return
 
     results = {}
@@ -71,12 +115,18 @@ def train_all_presets(dry_run: bool = False) -> None:
         print(f"Training: {preset_name}")
         print(f"{'=' * 60}")
 
-        # Extract sport_type and other parameters
+        # Extract and apply date range based on use_365d flag
+        config = config.copy()
+        use_365d = config.pop("use_365d", True)
         sport_type = config.pop("sport_type")
         
-        # Add date range to config
-        config["start_date"] = start_date
-        config["end_date"] = end_date
+        if use_365d:
+            start_date, end_date = get_last_365_days()
+            config["start_date"] = start_date
+            config["end_date"] = end_date
+            print(f"Window: {start_date} to {end_date}")
+        else:
+            print("Window: All data (no date filter)")
 
         # Train the model
         success = train_sport(
@@ -97,18 +147,22 @@ def train_all_presets(dry_run: bool = False) -> None:
 
 
 def train_single_preset(preset_name: str, dry_run: bool = False) -> None:
-    """Train a single preset model with dynamic 365-day window."""
+    """Train a single preset model."""
     if preset_name not in PRESETS:
         print(f"Error: Preset '{preset_name}' not found.")
         print(f"Available presets: {', '.join(sorted(PRESETS.keys()))}")
         return
 
-    start_date, end_date = get_last_365_days()
     config = PRESETS[preset_name].copy()
+    use_365d = config.get("use_365d", True)
     
     print(f"\n{'=' * 60}")
     print(f"Training: {preset_name}")
-    print(f"Window: {start_date} to {end_date}")
+    if use_365d:
+        start_date, end_date = get_last_365_days()
+        print(f"Window: {start_date} to {end_date}")
+    else:
+        print("Window: All data (no date filter)")
     print(f"{'=' * 60}")
 
     if dry_run:
@@ -116,13 +170,17 @@ def train_single_preset(preset_name: str, dry_run: bool = False) -> None:
         sport_type = config.get("sport_type")
         print(f"  Sport: {sport_type}")
         for key, value in config.items():
-            if key != "sport_type":
+            if key not in ["sport_type", "use_365d"]:
                 print(f"  {key}: {value}")
         return
 
     sport_type = config.pop("sport_type")
-    config["start_date"] = start_date
-    config["end_date"] = end_date
+    config.pop("use_365d")
+    
+    if use_365d:
+        start_date, end_date = get_last_365_days()
+        config["start_date"] = start_date
+        config["end_date"] = end_date
 
     success = train_sport(
         sport_name=sport_type,
