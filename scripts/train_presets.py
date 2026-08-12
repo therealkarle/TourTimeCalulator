@@ -192,38 +192,141 @@ def train_single_preset(preset_name: str, dry_run: bool = False) -> None:
     print(f"\nResult: {result}")
 
 
+def train_custom_preset(dry_run: bool = False) -> None:
+    """Create and train one custom preset."""
+    try:
+        name, config = _custom_preset()
+    except ValueError as exc:
+        print(f"Fehler: {exc}")
+        return
+    if dry_run:
+        print(f"[DRY RUN] Würde '{name}' mit {config} trainieren.")
+        return
+    sport_type = config.pop("sport_type")
+    success = train_sport(sport_name=sport_type, model_name=name, **config)
+    print(f"\nResult: {'✓ Success' if success else '✗ Failed (no data)'}")
+
+
+def _optional_number(prompt: str) -> float | None:
+    while True:
+        raw = input(prompt).strip()
+        if not raw:
+            return None
+        try:
+            value = float(raw)
+            if value < 0:
+                raise ValueError
+            return value
+        except ValueError:
+            print("Bitte eine nicht-negative Zahl oder leer eingeben.")
+
+
+def _optional_date(prompt: str) -> date | None:
+    while True:
+        raw = input(prompt).strip()
+        if not raw:
+            return None
+        try:
+            return date.fromisoformat(raw)
+        except ValueError:
+            print("Bitte YYYY-MM-DD oder leer eingeben.")
+
+
+def _optional_bool(prompt: str) -> bool | None:
+    while True:
+        raw = input(prompt).strip().lower()
+        if not raw:
+            return None
+        if raw in {"j", "ja", "y", "yes"}:
+            return True
+        if raw in {"n", "nein", "no"}:
+            return False
+        print("Bitte j, n oder leer eingeben.")
+
+
+def _time_to_seconds(prompt: str) -> int | None:
+    while True:
+        raw = input(prompt).strip()
+        if not raw:
+            return None
+        try:
+            parts = [int(part) for part in raw.split(":")]
+            if len(parts) == 2:
+                hours, minutes = parts
+                seconds = 0
+            elif len(parts) == 3:
+                hours, minutes, seconds = parts
+            else:
+                raise ValueError
+            if hours < 0 or not 0 <= minutes < 60 or not 0 <= seconds < 60:
+                raise ValueError
+            return hours * 3600 + minutes * 60 + seconds
+        except ValueError:
+            print("Bitte HH:MM oder HH:MM:SS eingeben, oder leer lassen.")
+
+
+def _custom_preset() -> tuple[str, dict]:
+    print("\nEigenes Preset erstellen (leer = keine Grenze)")
+    sport_type = input("Sportprofil (ride/mtb-ride/gravel/hike/run/trail_run): ").strip().lower()
+    if not sport_type:
+        raise ValueError("Das Sportprofil darf nicht leer sein.")
+    raw_types = input("Aktivitätstypen (optional, Komma getrennt): ").strip()
+    activity_types = [item.strip() for item in raw_types.split(",") if item.strip()] or None
+    config = {
+        "sport_type": sport_type,
+        "activity_types": activity_types,
+        "min_distance_km": _optional_number("Min. km: "),
+        "max_distance_km": _optional_number("Max. km: "),
+        "min_elevation_m": _optional_number("Min. hm: "),
+        "max_elevation_m": _optional_number("Max. hm: "),
+        "min_moving_time_s": _time_to_seconds("Min. Bewegungszeit (HH:MM[:SS]): "),
+        "max_moving_time_s": _time_to_seconds("Max. Bewegungszeit (HH:MM[:SS]): "),
+        "min_elapsed_time_s": _time_to_seconds("Min. Elapsed-Zeit (HH:MM[:SS]): "),
+        "max_elapsed_time_s": _time_to_seconds("Max. Elapsed-Zeit (HH:MM[:SS]): "),
+        "power_data": _optional_bool("Powerdaten erforderlich? (j/n/leer): "),
+        "heart_rate_data": _optional_bool("Herzfrequenz erforderlich? (j/n/leer): "),
+        "start_date": _optional_date("Startdatum (YYYY-MM-DD): "),
+        "end_date": _optional_date("Enddatum (YYYY-MM-DD): "),
+    }
+    for lower, upper in (("min_distance_km", "max_distance_km"), ("min_elevation_m", "max_elevation_m"), ("min_moving_time_s", "max_moving_time_s"), ("min_elapsed_time_s", "max_elapsed_time_s")):
+        if config[lower] is not None and config[upper] is not None and config[lower] > config[upper]:
+            raise ValueError(f"{lower} darf nicht größer als {upper} sein.")
+    if config["start_date"] and config["end_date"] and config["start_date"] > config["end_date"]:
+        raise ValueError("Das Startdatum darf nicht nach dem Enddatum liegen.")
+    name = input("Name des Presets/Modells: ").strip()
+    if not name:
+        raise ValueError("Der Name darf nicht leer sein.")
+    return name, config
+
+
 def train_interactive(dry_run: bool = False) -> None:
-    """Interactive preset selection."""
-    start_date, end_date = get_last_365_days()
-    print(f"\n365-day window: {start_date} to {end_date}\n")
-    
-    # Display available presets
-    presets_list = sorted(PRESETS.keys())
-    for i, preset in enumerate(presets_list, 1):
-        print(f"{i}. {preset}")
-    
-    print(f"{len(presets_list) + 1}. Train all presets")
-    print(f"{len(presets_list) + 2}. Exit")
-    
+    presets_list = sorted(PRESETS)
+    for index, preset in enumerate(presets_list, 1):
+        print(f"{index}. {preset}")
+    custom_option = len(presets_list) + 1
+    all_option = custom_option + 1
+    exit_option = all_option + 1
+    print(f"{custom_option}. Eigenes Preset erstellen")
+    print(f"{all_option}. Alle Presets trainieren")
+    print(f"{exit_option}. Beenden")
     while True:
         try:
-            choice = input("\nSelect preset (number): ").strip()
-            choice_num = int(choice)
-            
-            if choice_num == len(presets_list) + 2:
-                print("Exiting.")
-                return
-            elif choice_num == len(presets_list) + 1:
-                train_all_presets(dry_run=dry_run)
-                return
-            elif 1 <= choice_num <= len(presets_list):
-                preset_name = presets_list[choice_num - 1]
-                train_single_preset(preset_name, dry_run=dry_run)
-                return
-            else:
-                print(f"Please enter a number between 1 and {len(presets_list) + 2}.")
+            choice = int(input("\nAuswahl: ").strip())
         except ValueError:
-            print("Invalid input. Please enter a number.")
+            print("Bitte eine Zahl eingeben.")
+            continue
+        if choice == custom_option:
+            train_custom_preset(dry_run)
+            return
+        if choice == all_option:
+            train_all_presets(dry_run)
+            return
+        if choice == exit_option:
+            return
+        if 1 <= choice <= len(presets_list):
+            train_single_preset(presets_list[choice - 1], dry_run)
+            return
+        print(f"Bitte eine Zahl zwischen 1 und {exit_option} eingeben.")
 
 
 def main() -> None:
