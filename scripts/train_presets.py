@@ -295,6 +295,17 @@ def _optional_bool(prompt: str) -> bool | None:
         print("Please enter y, n, or leave blank.")
 
 
+def _elevation_mode() -> str:
+    """Ask user whether to count only uphill or uphill and downhill separately."""
+    while True:
+        choice = input("Elevation filter mode (up/separate) [up = uphill only, separate = uphill + downhill]: ").strip().lower()
+        if not choice or choice == "up":
+            return "up"
+        if choice == "separate":
+            return "separate"
+        print("Please enter 'up' or 'separate', or leave blank for 'up'.")
+
+
 def _time_to_seconds(prompt: str) -> int | None:
     while True:
         raw = input(prompt).strip()
@@ -323,25 +334,49 @@ def _custom_preset() -> tuple[str, dict]:
         raise ValueError("Sport profile cannot be blank.")
     raw_types = input("Activity types (optional, comma-separated): ").strip()
     activity_types = [item.strip() for item in raw_types.split(",") if item.strip()] or None
+    
     config = {
         "sport_type": sport_type,
         "activity_types": activity_types,
         "min_distance_km": _optional_number("Min. distance (km): "),
         "max_distance_km": _optional_number("Max. distance (km): "),
-        "min_elevation_m": _optional_number("Min. elevation (m): "),
-        "max_elevation_m": _optional_number("Max. elevation (m): "),
-        "min_moving_time_s": _time_to_seconds("Min. moving time (HH:MM[:SS]): "),
-        "max_moving_time_s": _time_to_seconds("Max. moving time (HH:MM[:SS]): "),
-        "min_elapsed_time_s": _time_to_seconds("Min. elapsed time (HH:MM[:SS]): "),
-        "max_elapsed_time_s": _time_to_seconds("Max. elapsed time (HH:MM[:SS]): "),
-        "power_data": _optional_bool("Require power data? (y/n/blank): "),
-        "heart_rate_data": _optional_bool("Require heart-rate data? (y/n/blank): "),
-        "start_date": _optional_date("Start date (YYYY-MM-DD): "),
-        "end_date": _optional_date("End date (YYYY-MM-DD): "),
     }
-    for lower, upper in (("min_distance_km", "max_distance_km"), ("min_elevation_m", "max_elevation_m"), ("min_moving_time_s", "max_moving_time_s"), ("min_elapsed_time_s", "max_elapsed_time_s")):
+    
+    elevation_mode = _elevation_mode()
+    config["elevation_mode"] = elevation_mode
+    
+    if elevation_mode == "separate":
+        config["min_elevation_up_m"] = _optional_number("Min. uphill elevation (m): ")
+        config["max_elevation_up_m"] = _optional_number("Max. uphill elevation (m): ")
+        config["min_elevation_down_m"] = _optional_number("Min. downhill elevation (m): ")
+        config["max_elevation_down_m"] = _optional_number("Max. downhill elevation (m): ")
+    else:
+        config["min_elevation_m"] = _optional_number("Min. elevation (m): ")
+        config["max_elevation_m"] = _optional_number("Max. elevation (m): ")
+    
+    config["min_moving_time_s"] = _time_to_seconds("Min. moving time (HH:MM[:SS]): ")
+    config["max_moving_time_s"] = _time_to_seconds("Max. moving time (HH:MM[:SS]): ")
+    config["min_elapsed_time_s"] = _time_to_seconds("Min. elapsed time (HH:MM[:SS]): ")
+    config["max_elapsed_time_s"] = _time_to_seconds("Max. elapsed time (HH:MM[:SS]): ")
+    config["power_data"] = _optional_bool("Require power data? (y/n/blank): ")
+    config["heart_rate_data"] = _optional_bool("Require heart-rate data? (y/n/blank): ")
+    config["start_date"] = _optional_date("Start date (YYYY-MM-DD): ")
+    config["end_date"] = _optional_date("End date (YYYY-MM-DD): ")
+    
+    if elevation_mode == "separate":
+        for lower, upper in (("min_elevation_up_m", "max_elevation_up_m"), ("min_elevation_down_m", "max_elevation_down_m")):
+            if config.get(lower) is not None and config.get(upper) is not None and config[lower] > config[upper]:
+                raise ValueError(f"{lower} cannot be greater than {upper}.")
+    else:
+        min_elev = config.get("min_elevation_m")
+        max_elev = config.get("max_elevation_m")
+        if min_elev is not None and max_elev is not None and min_elev > max_elev:
+            raise ValueError("min_elevation_m cannot be greater than max_elevation_m.")
+    
+    for lower, upper in (("min_distance_km", "max_distance_km"), ("min_moving_time_s", "max_moving_time_s"), ("min_elapsed_time_s", "max_elapsed_time_s")):
         if config[lower] is not None and config[upper] is not None and config[lower] > config[upper]:
             raise ValueError(f"{lower} cannot be greater than {upper}.")
+    
     if config["start_date"] and config["end_date"] and config["start_date"] > config["end_date"]:
         raise ValueError("Start date cannot be after end date.")
     name = input("Preset/model name: ").strip()

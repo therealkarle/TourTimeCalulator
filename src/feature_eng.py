@@ -42,6 +42,10 @@ def load_cleaned_data(
     max_distance_km: float | None = None,
     min_elevation_m: float | None = None,
     max_elevation_m: float | None = None,
+    min_elevation_up_m: float | None = None,
+    max_elevation_up_m: float | None = None,
+    min_elevation_down_m: float | None = None,
+    max_elevation_down_m: float | None = None,
     min_moving_time_s: int | None = None,
     max_moving_time_s: int | None = None,
     min_elapsed_time_s: int | None = None,
@@ -49,8 +53,12 @@ def load_cleaned_data(
     heart_rate_data: bool | None = None,
     start_date: date | None = None,
     end_date: date | None = None,
+    elevation_mode: str = "up",
 ) -> pd.DataFrame:
-    """Load Strava activities and apply training filters."""
+    """Load Strava activities and apply training filters.
+    
+    elevation_mode: "up" for uphill only, "separate" for uphill and downhill separately.
+    """
     _validate_filter_ranges(
         min_distance_km, max_distance_km, min_elevation_m, max_elevation_m,
         min_moving_time_s, max_moving_time_s, min_elapsed_time_s,
@@ -77,7 +85,8 @@ def load_cleaned_data(
     frame["elevation_m"] = frame["total_elevation_gain"].fillna(0.0)
     frame["elevation_m"] = pd.to_numeric(frame["elevation_m"], errors="coerce")
     frame["elevation_up_m"] = frame["elevation_m"]
-    frame["elevation_down_m"] = pd.to_numeric(frame["descent_elevation_m"], errors="coerce")
+    frame["elevation_down_m"] = pd.to_numeric(frame["descent_elevation_m"], errors="coerce").fillna(0.0)
+    
     if min_distance_km is not None:
         frame = frame[frame["distance_km"] >= min_distance_km]
     if max_distance_km is not None:
@@ -86,6 +95,14 @@ def load_cleaned_data(
         frame = frame[frame["elevation_m"] >= min_elevation_m]
     if max_elevation_m is not None:
         frame = frame[frame["elevation_m"] <= max_elevation_m]
+    if min_elevation_up_m is not None:
+        frame = frame[frame["elevation_up_m"] >= min_elevation_up_m]
+    if max_elevation_up_m is not None:
+        frame = frame[frame["elevation_up_m"] <= max_elevation_up_m]
+    if min_elevation_down_m is not None:
+        frame = frame[frame["elevation_down_m"] >= min_elevation_down_m]
+    if max_elevation_down_m is not None:
+        frame = frame[frame["elevation_down_m"] <= max_elevation_down_m]
     if min_moving_time_s is not None:
         frame = frame[frame["moving_time"] >= min_moving_time_s]
     if max_moving_time_s is not None:

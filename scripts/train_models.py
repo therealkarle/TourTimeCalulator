@@ -26,6 +26,10 @@ def train_sport(
     max_distance_km: float | None = None,
     min_elevation_m: float | None = None,
     max_elevation_m: float | None = None,
+    min_elevation_up_m: float | None = None,
+    max_elevation_up_m: float | None = None,
+    min_elevation_down_m: float | None = None,
+    max_elevation_down_m: float | None = None,
     min_moving_time_s: int | None = None,
     max_moving_time_s: int | None = None,
     min_elapsed_time_s: int | None = None,
@@ -34,13 +38,19 @@ def train_sport(
     start_date: date | None = None,
     end_date: date | None = None,
     separate_elevation: bool = False,
+    elevation_mode: str = "up",
 ) -> bool:
-    """Load cleaned data and train one named model for one sport."""
+    """Load cleaned data and train one named model for one sport.
+    
+    elevation_mode: "up" for uphill only, "separate" for uphill and downhill separately.
+    """
     data = load_cleaned_data(
         sport_name, activity_types, commute, equipment, power_data,
         min_distance_km, max_distance_km, min_elevation_m, max_elevation_m,
+        min_elevation_up_m, max_elevation_up_m, min_elevation_down_m, max_elevation_down_m,
         min_moving_time_s, max_moving_time_s, min_elapsed_time_s,
         max_elapsed_time_s, heart_rate_data, start_date, end_date,
+        elevation_mode=elevation_mode,
     )
     if data.empty:
         print(f"No valid Strava activities found for '{sport_name}'. Skipping.")
@@ -53,11 +63,14 @@ def train_sport(
         filters={"activity_types": activity_types, "commute": commute, "equipment": equipment,
                  "power_data": power_data, "min_distance_km": min_distance_km,
                  "max_distance_km": max_distance_km, "min_elevation_m": min_elevation_m,
-                 "max_elevation_m": max_elevation_m, "min_moving_time_s": min_moving_time_s,
+                 "max_elevation_m": max_elevation_m, "min_elevation_up_m": min_elevation_up_m,
+                 "max_elevation_up_m": max_elevation_up_m, "min_elevation_down_m": min_elevation_down_m,
+                 "max_elevation_down_m": max_elevation_down_m, "min_moving_time_s": min_moving_time_s,
                  "max_moving_time_s": max_moving_time_s, "min_elapsed_time_s": min_elapsed_time_s,
                  "max_elapsed_time_s": max_elapsed_time_s, "heart_rate_data": heart_rate_data,
                  "start_date": start_date.isoformat() if start_date else None,
-                 "end_date": end_date.isoformat() if end_date else None},
+                 "end_date": end_date.isoformat() if end_date else None,
+                 "elevation_mode": elevation_mode},
         separate_elevation=separate_elevation,
     )
 
