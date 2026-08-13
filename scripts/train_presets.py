@@ -1,8 +1,12 @@
 """Train preset models with dynamic 365-day lookback window."""
 
+import json
 import sys
 from datetime import date, timedelta
 from pathlib import Path
+
+BASE_DIR = Path(__file__).resolve().parents[1]
+PRESET_DIR = BASE_DIR / "presets"
 
 # Support: python scripts/train_presets.py
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -97,8 +101,52 @@ PRESETS = {
 }
 
 
+def load_saved_presets() -> dict[str, dict]:
+    """Load custom preset definitions from the presets directory."""
+    saved = {}
+    if not PRESET_DIR.exists():
+        return saved
+    for path in sorted(PRESET_DIR.glob("*.json")):
+        try:
+            config = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(config, dict) or not config.get("sport_type"):
+                print(f"Warning: Skipping invalid preset '{path.name}'.")
+                continue
+            for key in ("start_date", "end_date"):
+                if config.get(key):
+                    config[key] = date.fromisoformat(config[key])
+            saved[path.stem] = config
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            print(f"Warning: Could not load preset '{path.name}': {exc}")
+    return saved
+
+
+def save_preset(name: str, config: dict) -> None:
+    """Save a preset definition as JSON."""
+    preset_id = "_".join(name.split())
+    preset_id = "".join(c for c in preset_id if c.isalnum() or c in "_-")
+    if not preset_id:
+        raise ValueError("Preset name must contain at least one letter or number.")
+    PRESET_DIR.mkdir(parents=True, exist_ok=True)
+    serializable = dict(config)
+    for key in ("start_date", "end_date"):
+        if isinstance(serializable.get(key), date):
+            serializable[key] = serializable[key].isoformat()
+    (PRESET_DIR / f"{preset_id}.json").write_text(
+        json.dumps(serializable, indent=2) + "\n", encoding="utf-8"
+    )
+
+
+def refresh_saved_presets() -> None:
+    """Add saved presets without replacing built-in presets."""
+    for name, config in load_saved_presets().items():
+        if name not in PRESETS:
+            PRESETS[name] = config
+
+
 def train_all_presets(dry_run: bool = False) -> None:
     """Train all preset models."""
+    refresh_saved_presets()
     print(f"\nTraining all presets\n")
 
     if dry_run:
@@ -202,6 +250,9 @@ def train_custom_preset(dry_run: bool = False) -> None:
     if dry_run:
         print(f"[DRY RUN] Would train '{name}' with {config}.")
         return
+    save_preset(name, config)
+    if name not in PRESETS:
+        PRESETS[name] = config.copy()
     sport_type = config.pop("sport_type")
     success = train_sport(sport_name=sport_type, model_name=name, **config)
     print(f"\nResult: {'✓ Success' if success else '✗ Failed (no data)'}")
@@ -300,6 +351,7 @@ def _custom_preset() -> tuple[str, dict]:
 
 
 def train_interactive(dry_run: bool = False) -> None:
+    refresh_saved_presets()
     presets_list = sorted(PRESETS)
     for index, preset in enumerate(presets_list, 1):
         print(f"{index}. {preset}")
@@ -333,6 +385,7 @@ def main() -> None:
     """CLI entry point for training presets."""
     import argparse
 
+    refresh_saved_presets()
     parser = argparse.ArgumentParser(
         description="Train preset models with dynamic 365-day window"
     )
