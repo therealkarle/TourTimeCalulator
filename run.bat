@@ -25,15 +25,17 @@ echo [1] Start application
 echo [2] Estimate tour
 echo [3] Synchronize Strava
 echo [4] Train models
-echo [5] Update models
-echo [6] Set up Strava token
+echo [5] Train presets
+echo [6] Update models
+echo [7] Set up Strava token
 echo [0] Exit
 echo.
-choice /c 1234560 /n /m "Selection: "
+choice /c 12345670 /n /m "Selection: "
 
-if errorlevel 7 goto :end
-if errorlevel 6 goto token
-if errorlevel 5 goto update
+if errorlevel 8 goto :end
+if errorlevel 7 goto token
+if errorlevel 6 goto update
+if errorlevel 5 goto trainpresets
 if errorlevel 4 goto train
 if errorlevel 3 goto sync
 if errorlevel 2 goto estimate
@@ -53,6 +55,10 @@ goto :done
 
 :train
 "%PYTHON%" %PYTHON_ARGS% -m scripts.train_models %2 %3 %4 %5 %6 %7 %8 %9
+goto :done
+
+:trainpresets
+"%PYTHON%" %PYTHON_ARGS% -m scripts.train_presets %2 %3 %4 %5 %6 %7 %8 %9
 goto :done
 
 :update
