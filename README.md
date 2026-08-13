@@ -194,10 +194,92 @@ scripts/sync_strava.py          Download and cache Strava activities
 scripts/train_models.py         Train named models
 scripts/update_models.py        Retrain saved models
 scripts/estimate_tour_duration.py  Estimate a planned tour
+scripts/get_strava_refresh_token.py OAuth helper for Strava authentication
+scripts/train_presets.py        Manage and train preset model configurations
 src/                            Data, model, prediction, and Strava logic
 data/                           Local SQLite cache (ignored by Git)
 models/                         Generated models (ignored by Git)
 ```
+
+## Functions
+
+### Main Entry Point
+
+#### `main.py`
+
+- **`main()`** - Orchestrates the complete interactive workflow: synchronizes Strava activities, prompts for sport profile and model name, trains a regression model, and estimates a tour duration.
+
+### Scripts
+
+#### `scripts/sync_strava.py`
+
+- **`main()`** - Downloads and caches Strava activities into a local SQLite database. Supports incremental syncs using the latest cached activity date.
+
+#### `scripts/train_models.py`
+
+- **`train_sport(sport, model_name, ...)`** - Trains and saves regression models for a specific sport using filtered Strava activity data.
+- **`main()`** - Interactive CLI for training models with optional filters (sport, gear, commuting, distance, elevation, power data, date ranges).
+- **`non_negative_float(value)`** - Argument parser validator for non-negative float values.
+- **`iso_date(value)`** - Argument parser validator for ISO 8601 date format.
+
+#### `scripts/update_models.py`
+
+- **`update_model(metadata_path)`** - Retrains a single saved model using the filters stored in its metadata.
+- **`main()`** - Retrains all saved models in the `models/` directory with optional `--no-sync` flag to skip Strava API calls.
+
+#### `scripts/estimate_tour_duration.py`
+
+- **`main()`** - Interactive CLI for estimating a planned tour. Selects a model and prompts for distance and elevation inputs, then predicts time and performance metrics.
+
+#### `scripts/get_strava_refresh_token.py`
+
+- **`read_env_value(name)`** - Reads a configuration value from `.env` file.
+- **`update_env_value(name, value)`** - Writes a configuration value to `.env` file.
+- **`exchange_code(client_id, client_secret, code)`** - Exchanges Strava authorization code for a refresh token via OAuth.
+- **`main()`** - OAuth flow helper. Opens Strava authorization in the browser, receives the callback, and stores the refresh token in `.env`.
+
+#### `scripts/train_presets.py`
+
+- **`get_last_365_days()`** - Returns a tuple of (start_date, end_date) for the last 365 days.
+- **`load_saved_presets()`** - Loads all preset model configurations from `presets/` directory.
+- **`save_preset(name, config)`** - Saves a preset configuration to a JSON file.
+- **`refresh_saved_presets()`** - Retrains all saved presets using the last 365 days of activity data.
+- **`train_all_presets(dry_run)`** - Trains all presets with optional dry-run mode to preview without saving.
+- **`train_single_preset(preset_name, dry_run)`** - Trains a specific preset by name.
+- **`train_custom_preset(dry_run)`** - Interactive CLI to create and train a custom preset configuration.
+- **`train_interactive(dry_run)`** - Interactive workflow for training presets with real-time feedback.
+- **`main()`** - CLI entry point for managing and training preset configurations.
+
+### Source Code (`src/`)
+
+#### `src/strava_client.py`
+
+- **`ensure_db_schema(db_path)`** - Creates or migrates the SQLite activities table and indices.
+- **`StravaClient.refresh_access_token()`** - Obtains a fresh OAuth access token using the configured refresh token.
+- **`StravaClient._init_db()`** - Initializes the database schema on client instantiation.
+- Additional methods for syncing activities, rate limiting, and caching Strava data.
+
+#### `src/feature_eng.py`
+
+- **`available_sport_profiles()`** - Returns a dictionary of sport profiles with at least one matching cached activity.
+- **`load_cleaned_data(...)`** - Loads and cleans Strava activities from the cache with optional filters for sport type, distance, elevation, power data, heart rate, moving time, and date ranges. Supports separate elevation mode (uphill/downhill split).
+- **`_validate_filter_ranges(...)`** - Validates that filter ranges are logically consistent and positive.
+- **`_utc_timestamp(value)`** - Converts a date to UTC Unix timestamp.
+
+#### `src/model_trainer.py`
+
+- **`train_models_for_sport(df, sport_name, model_name, ...)`** - Trains and persists regression models for elapsed time, moving time, energy consumption, average power, weighted average power, and average heart rate. Supports separate elevation parameters and distance/elevation-only models.
+
+#### `src/predictor.py`
+
+- **`list_models(model_dir)`** - Returns a list of all trained models with their metadata from the models directory.
+- **`predict_tour(model_name, distance_km, elevation_m, descent_m)`** - Predicts tour metrics (time, energy, power, heart rate) for a given model and route parameters.
+- **`_predict_optional(model, features)`** - Predicts optional metrics (power, heart rate) when available in the model.
+- **`_rounded_or_none(value)`** - Rounds predictions to integers or returns None for unavailable metrics.
+
+#### `src/config.py`
+
+- Configuration module defining paths, environment variables, and API endpoints.
 
 ## License
 
