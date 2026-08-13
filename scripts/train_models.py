@@ -26,6 +26,11 @@ def train_sport(
     max_distance_km: float | None = None,
     min_elevation_m: float | None = None,
     max_elevation_m: float | None = None,
+    min_moving_time_s: int | None = None,
+    max_moving_time_s: int | None = None,
+    min_elapsed_time_s: int | None = None,
+    max_elapsed_time_s: int | None = None,
+    heart_rate_data: bool | None = None,
     start_date: date | None = None,
     end_date: date | None = None,
     separate_elevation: bool = False,
@@ -34,7 +39,8 @@ def train_sport(
     data = load_cleaned_data(
         sport_name, activity_types, commute, equipment, power_data,
         min_distance_km, max_distance_km, min_elevation_m, max_elevation_m,
-        start_date, end_date,
+        min_moving_time_s, max_moving_time_s, min_elapsed_time_s,
+        max_elapsed_time_s, heart_rate_data, start_date, end_date,
     )
     if data.empty:
         print(f"No valid Strava activities found for '{sport_name}'. Skipping.")
@@ -47,7 +53,10 @@ def train_sport(
         filters={"activity_types": activity_types, "commute": commute, "equipment": equipment,
                  "power_data": power_data, "min_distance_km": min_distance_km,
                  "max_distance_km": max_distance_km, "min_elevation_m": min_elevation_m,
-                 "max_elevation_m": max_elevation_m, "start_date": start_date.isoformat() if start_date else None,
+                 "max_elevation_m": max_elevation_m, "min_moving_time_s": min_moving_time_s,
+                 "max_moving_time_s": max_moving_time_s, "min_elapsed_time_s": min_elapsed_time_s,
+                 "max_elapsed_time_s": max_elapsed_time_s, "heart_rate_data": heart_rate_data,
+                 "start_date": start_date.isoformat() if start_date else None,
                  "end_date": end_date.isoformat() if end_date else None},
         separate_elevation=separate_elevation,
     )
