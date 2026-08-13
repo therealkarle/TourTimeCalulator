@@ -43,11 +43,9 @@ def main() -> None:
             if elevation is None:
                 elevation = float(input("Elevation ascent in m: "))
             descent = args.elevation_down_m
-            if descent is None and not args.model:
+            if descent is None:
                 raw_descent = input("Elevation descent in m (empty = ascent): ").strip()
                 descent = float(raw_descent) if raw_descent else elevation
-            elif descent is None:
-                descent = elevation
         else:
             elevation = args.elevation_m if args.elevation_m is not None else args.elevation_up_m
             if elevation is None:
