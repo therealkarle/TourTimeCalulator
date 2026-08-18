@@ -223,7 +223,7 @@ def train_single_preset(preset_name: str, dry_run: bool = False) -> None:
         return
 
     sport_type = config.pop("sport_type")
-    config.pop("use_365d")
+    config.pop("use_365d", None)
     
     if use_365d:
         start_date, end_date = get_last_365_days()

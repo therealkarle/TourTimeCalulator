@@ -44,6 +44,10 @@ def train_sport(
     
     elevation_mode: "up" for uphill only, "separate" for uphill and downhill separately.
     """
+    # Keep the model feature selection in sync with the selected elevation mode.
+    # Explicit ``separate_elevation=True`` remains supported for direct callers.
+    separate_elevation = separate_elevation or elevation_mode == "separate"
+
     data = load_cleaned_data(
         sport_name, activity_types, commute, equipment, power_data,
         min_distance_km, max_distance_km, min_elevation_m, max_elevation_m,
