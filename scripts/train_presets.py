@@ -152,8 +152,14 @@ def train_all_presets(dry_run: bool = False) -> None:
     if dry_run:
         print("[DRY RUN] Would train the following presets:")
         for preset_name, config in PRESETS.items():
-            use_365d = config.get("use_365d", True)
-            window = "last 365 days" if use_365d else "all data"
+            has_explicit_dates = config.get("start_date") is not None or config.get("end_date") is not None
+            use_365d = False if has_explicit_dates else config.get("use_365d", False)
+            if use_365d:
+                window = "last 365 days"
+            elif has_explicit_dates:
+                window = f"{config.get('start_date')} to {config.get('end_date')}"
+            else:
+                window = "all data"
             print(f"  - {preset_name} ({window})")
         return
 
@@ -165,7 +171,8 @@ def train_all_presets(dry_run: bool = False) -> None:
 
         # Extract and apply date range based on use_365d flag
         config = config.copy()
-        use_365d = config.pop("use_365d", True)
+        has_explicit_dates = config.get("start_date") is not None or config.get("end_date") is not None
+        use_365d = False if has_explicit_dates else config.pop("use_365d", False)
         sport_type = config.pop("sport_type")
         
         if use_365d:
@@ -174,7 +181,10 @@ def train_all_presets(dry_run: bool = False) -> None:
             config["end_date"] = end_date
             print(f"Window: {start_date} to {end_date}")
         else:
-            print("Window: All data (no date filter)")
+            if has_explicit_dates:
+                print(f"Window: {config.get('start_date')} to {config.get('end_date')}")
+            else:
+                print("Window: All data (no date filter)")
 
         # Train the model
         success = train_sport(
@@ -202,7 +212,10 @@ def train_single_preset(preset_name: str, dry_run: bool = False) -> None:
         return
 
     config = PRESETS[preset_name].copy()
-    use_365d = config.get("use_365d", True)
+    
+    # start_date and end_date have priority over use_365d
+    has_explicit_dates = config.get("start_date") is not None or config.get("end_date") is not None
+    use_365d = False if has_explicit_dates else config.get("use_365d", False)
     
     print(f"\n{'=' * 60}")
     print(f"Training: {preset_name}")
@@ -210,7 +223,10 @@ def train_single_preset(preset_name: str, dry_run: bool = False) -> None:
         start_date, end_date = get_last_365_days()
         print(f"Window: {start_date} to {end_date}")
     else:
-        print("Window: All data (no date filter)")
+        if has_explicit_dates:
+            print(f"Window: {config.get('start_date')} to {config.get('end_date')}")
+        else:
+            print("Window: All data (no date filter)")
     print(f"{'=' * 60}")
 
     if dry_run:
