@@ -17,7 +17,7 @@ from scripts.train_models import train_sport
 def get_last_365_days() -> tuple[date, date]:
     """Return (start_date, end_date) for the last 365 days."""
     today = date.today()
-    return today - timedelta(days=365), today
+    return today - timedelta(days=364), today
 
 
 # Define all 7 preset model configurations with 365d and all variants

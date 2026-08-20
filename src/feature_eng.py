@@ -1,6 +1,7 @@
 """Cleaning and feature engineering for cached activities."""
 
 import sqlite3
+from contextlib import closing
 from datetime import date, datetime, time, timedelta, timezone
 
 import pandas as pd
@@ -18,11 +19,13 @@ SPORT_ALIASES = {
     "trail_run": ("TrailRun",),
 }
 
+MECHANICAL_EFFICIENCY = 0.24
+
 
 def available_sport_profiles() -> dict[str, tuple[str, ...]]:
     """Return English profiles with at least one matching cached Strava activity."""
     ensure_db_schema(DB_PATH)
-    with sqlite3.connect(DB_PATH) as conn:
+    with closing(sqlite3.connect(DB_PATH)) as conn:
         rows = conn.execute("SELECT DISTINCT type, sport_type FROM activities").fetchall()
     available_types = {value for row in rows for value in row if value}
     return {
@@ -59,19 +62,35 @@ def load_cleaned_data(
     
     elevation_mode: "up" for uphill only, "separate" for uphill and downhill separately.
     """
+    if elevation_mode not in {"up", "separate"}:
+        raise ValueError("elevation_mode must be 'up' or 'separate'")
     _validate_filter_ranges(
-        min_distance_km, max_distance_km, min_elevation_m, max_elevation_m,
-        min_moving_time_s, max_moving_time_s, min_elapsed_time_s,
-        max_elapsed_time_s, heart_rate_data, start_date, end_date,
+        min_distance_km=min_distance_km,
+        max_distance_km=max_distance_km,
+        min_elevation_m=min_elevation_m,
+        max_elevation_m=max_elevation_m,
+        min_elevation_up_m=min_elevation_up_m,
+        max_elevation_up_m=max_elevation_up_m,
+        min_elevation_down_m=min_elevation_down_m,
+        max_elevation_down_m=max_elevation_down_m,
+        min_moving_time_s=min_moving_time_s,
+        max_moving_time_s=max_moving_time_s,
+        min_elapsed_time_s=min_elapsed_time_s,
+        max_elapsed_time_s=max_elapsed_time_s,
+        start_date=start_date,
+        end_date=end_date,
     )
     ensure_db_schema(DB_PATH)
     requested = SPORT_ALIASES.get(sport_type.lower(), (sport_type, f"Virtual{sport_type}"))
     type_clause = ""
     params: tuple[str, ...] = tuple(requested)
     if activity_types:
-        type_clause = f" AND type IN ({','.join('?' for _ in activity_types)})"
+        type_clause = (
+            " AND COALESCE(sport_type, type) IN "
+            f"({','.join('?' for _ in activity_types)})"
+        )
         params += tuple(activity_types)
-    with sqlite3.connect(DB_PATH) as conn:
+    with closing(sqlite3.connect(DB_PATH)) as conn:
         frame = pd.read_sql_query(
             f"SELECT * FROM activities WHERE COALESCE(sport_type, type) IN "
             f"({','.join('?' for _ in requested)}){type_clause}",
@@ -85,7 +104,11 @@ def load_cleaned_data(
     frame["elevation_m"] = frame["total_elevation_gain"].fillna(0.0)
     frame["elevation_m"] = pd.to_numeric(frame["elevation_m"], errors="coerce")
     frame["elevation_up_m"] = frame["elevation_m"]
-    frame["elevation_down_m"] = pd.to_numeric(frame["descent_elevation_m"], errors="coerce").fillna(0.0)
+    frame["elevation_down_m"] = pd.to_numeric(
+        frame["descent_elevation_m"], errors="coerce"
+    )
+    if elevation_mode == "separate":
+        frame = frame.dropna(subset=["elevation_down_m"])
     
     if min_distance_km is not None:
         frame = frame[frame["distance_km"] >= min_distance_km]
@@ -117,7 +140,10 @@ def load_cleaned_data(
         frame = frame[frame["start_date"] < _utc_timestamp(end_date + timedelta(days=1))]
     frame = frame[frame["moving_time"] > 0]
     frame = frame[frame["elapsed_time"] > 0]
-    frame = frame[(frame["moving_time"] / frame["elapsed_time"]) > 0.70]
+    frame["stopped_time"] = (
+        pd.to_numeric(frame["elapsed_time"], errors="coerce")
+        - pd.to_numeric(frame["moving_time"], errors="coerce")
+    ).clip(lower=0)
     frame["gradient_pct"] = frame["elevation_m"] / (frame["distance_km"] * 10.0)
     frame["elevation_per_km"] = frame["elevation_m"] / frame["distance_km"]
     frame["commute_clean"] = frame["commute"].fillna(frame["workout_type"].eq(2)).fillna(False).astype(bool)
@@ -125,7 +151,9 @@ def load_cleaned_data(
     present_power_columns = [column for column in power_columns if column in frame]
     frame["power_data_available"] = frame[present_power_columns].notna().any(axis=1)
     if "device_watts" in frame:
-        frame["power_data_available"] |= frame["device_watts"].fillna(0).astype(bool)
+        frame["power_data_available"] |= pd.to_numeric(
+            frame["device_watts"], errors="coerce"
+        ).fillna(0).ne(0)
     if commute is not None:
         frame = frame[frame["commute_clean"] == commute]
     if equipment:
@@ -137,7 +165,9 @@ def load_cleaned_data(
         frame = frame[heart_rate_available == heart_rate_data]
     kilojoules = pd.to_numeric(frame["kilojoules"], errors="coerce")
     calories = pd.to_numeric(frame["calories"], errors="coerce")
-    frame["kcal_clean"] = kilojoules.fillna(calories)
+    frame["kcal_clean"] = calories.fillna(
+        kilojoules / (4.184 * MECHANICAL_EFFICIENCY)
+    )
     frame["average_power_watts"] = pd.to_numeric(frame["average_watts"], errors="coerce")
     frame["weighted_average_power_watts"] = pd.to_numeric(
         frame["weighted_average_watts"], errors="coerce"
@@ -151,11 +181,14 @@ def _validate_filter_ranges(
     max_distance_km: float | None,
     min_elevation_m: float | None,
     max_elevation_m: float | None,
+    min_elevation_up_m: float | None,
+    max_elevation_up_m: float | None,
+    min_elevation_down_m: float | None,
+    max_elevation_down_m: float | None,
     min_moving_time_s: int | None,
     max_moving_time_s: int | None,
     min_elapsed_time_s: int | None,
     max_elapsed_time_s: int | None,
-    heart_rate_data: bool | None,
     start_date: date | None,
     end_date: date | None,
 ) -> None:
@@ -164,6 +197,10 @@ def _validate_filter_ranges(
         ("max_distance_km", max_distance_km),
         ("min_elevation_m", min_elevation_m),
         ("max_elevation_m", max_elevation_m),
+        ("min_elevation_up_m", min_elevation_up_m),
+        ("max_elevation_up_m", max_elevation_up_m),
+        ("min_elevation_down_m", min_elevation_down_m),
+        ("max_elevation_down_m", max_elevation_down_m),
         ("min_moving_time_s", min_moving_time_s),
         ("max_moving_time_s", max_moving_time_s),
         ("min_elapsed_time_s", min_elapsed_time_s),
@@ -175,6 +212,10 @@ def _validate_filter_ranges(
         raise ValueError("min_distance_km cannot be greater than max_distance_km")
     if min_elevation_m is not None and max_elevation_m is not None and min_elevation_m > max_elevation_m:
         raise ValueError("min_elevation_m cannot be greater than max_elevation_m")
+    if min_elevation_up_m is not None and max_elevation_up_m is not None and min_elevation_up_m > max_elevation_up_m:
+        raise ValueError("min_elevation_up_m cannot be greater than max_elevation_up_m")
+    if min_elevation_down_m is not None and max_elevation_down_m is not None and min_elevation_down_m > max_elevation_down_m:
+        raise ValueError("min_elevation_down_m cannot be greater than max_elevation_down_m")
     if min_moving_time_s is not None and max_moving_time_s is not None and min_moving_time_s > max_moving_time_s:
         raise ValueError("min_moving_time_s cannot be greater than max_moving_time_s")
     if min_elapsed_time_s is not None and max_elapsed_time_s is not None and min_elapsed_time_s > max_elapsed_time_s:

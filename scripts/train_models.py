@@ -90,7 +90,7 @@ def main() -> None:
     parser.add_argument(
         "--distance-elevation-only",
         action="store_true",
-        help="Train using only distance and elevation (omit elevation per km)",
+        help="Deprecated compatibility option; new models always use these features",
     )
     parser.add_argument(
         "--separate-elevation",

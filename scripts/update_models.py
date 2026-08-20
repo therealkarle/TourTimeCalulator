@@ -1,5 +1,6 @@
 """Retrain all existing models from the local activity cache."""
 
+import argparse
 import json
 import sys
 from datetime import date
@@ -100,10 +101,45 @@ def update_model(metadata_path: Path) -> bool:
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--model",
+        dest="model_names",
+        action="append",
+        metavar="NAME_OR_ID",
+        help="Update only this model; repeat the option to select multiple models",
+    )
+    args = parser.parse_args()
+
     metadata_files = sorted(MODEL_DIR.glob("*.txt"))
     if not metadata_files:
         print(f"No model metadata found in {MODEL_DIR}.")
         return 1
+
+    if args.model_names:
+        requested = {name.casefold() for name in args.model_names}
+        selected_files = []
+        matched_names = set()
+        for path in metadata_files:
+            try:
+                metadata = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError) as exc:
+                print(f"Could not read model metadata '{path.name}': {exc}")
+                continue
+            candidates = {
+                path.stem.casefold(),
+                str(metadata.get("model_id", "")).casefold(),
+                str(metadata.get("model_name", "")).casefold(),
+            }
+            if requested.intersection(candidates):
+                selected_files.append(path)
+                matched_names.update(requested.intersection(candidates))
+
+        missing = requested - matched_names
+        if missing:
+            print(f"Model(s) not found: {', '.join(sorted(missing))}")
+            return 1
+        metadata_files = selected_files
 
     print(f"Retraining {len(metadata_files)} saved models...")
     updated = sum(update_model(path) for path in metadata_files)

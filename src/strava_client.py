@@ -2,8 +2,11 @@
 
 import sqlite3
 import time
+from contextlib import closing
 from datetime import datetime, timezone
+from math import isfinite
 from pathlib import Path
+from statistics import median
 from typing import Any, Optional
 
 import requests
@@ -16,12 +19,14 @@ from src.config import (
     STRAVA_REFRESH_TOKEN,
 )
 
+ELEVATION_ALGORITHM_VERSION = 1
+
 
 def ensure_db_schema(db_path: Path = DB_PATH) -> None:
     """Create the activities table and apply migrations to an existing cache."""
     db_path = Path(db_path)
     db_path.parent.mkdir(parents=True, exist_ok=True)
-    with sqlite3.connect(db_path) as conn:
+    with closing(sqlite3.connect(db_path)) as conn, conn:
         conn.execute(
             """CREATE TABLE IF NOT EXISTS activities (
                 id INTEGER PRIMARY KEY, name TEXT, type TEXT,
@@ -31,7 +36,8 @@ def ensure_db_schema(db_path: Path = DB_PATH) -> None:
                 kilojoules REAL, calories REAL, workout_type INTEGER,
                 average_watts REAL, weighted_average_watts REAL,
                 device_watts INTEGER, average_heartrate REAL, has_power INTEGER,
-                descent_elevation_m REAL, elevation_stream_checked INTEGER DEFAULT 0
+                descent_elevation_m REAL, elevation_stream_checked INTEGER DEFAULT 0,
+                elevation_stream_version INTEGER DEFAULT 0
             )"""
         )
         columns = {row[1] for row in conn.execute("PRAGMA table_info(activities)")}
@@ -40,6 +46,7 @@ def ensure_db_schema(db_path: Path = DB_PATH) -> None:
             "average_watts": "REAL", "weighted_average_watts": "REAL",
             "device_watts": "INTEGER", "average_heartrate": "REAL", "has_power": "INTEGER",
             "descent_elevation_m": "REAL", "elevation_stream_checked": "INTEGER DEFAULT 0",
+            "elevation_stream_version": "INTEGER DEFAULT 0",
         }
         for column, definition in migrations.items():
             if column not in columns:
@@ -129,11 +136,36 @@ class StravaClient:
         return [float(value) for value in values if value is not None] if values else None
 
     @staticmethod
-    def _calculate_elevation_loss(altitudes: list[float] | None) -> float | None:
-        """Sum negative altitude changes from a Strava altitude stream."""
-        if not altitudes or len(altitudes) < 2:
+    def _calculate_elevation_loss(
+        altitudes: list[float] | None,
+        noise_threshold_m: float = 1.5,
+    ) -> float | None:
+        """Estimate descent after median smoothing and a noise deadband."""
+        if not altitudes:
             return None
-        return sum(max(0.0, previous - current) for previous, current in zip(altitudes, altitudes[1:]))
+        values = [float(value) for value in altitudes if isfinite(float(value))]
+        if len(values) < 2:
+            return None
+        if noise_threshold_m < 0:
+            raise ValueError("noise_threshold_m cannot be negative")
+
+        smoothed = values.copy()
+        for index in range(1, len(values) - 1):
+            start = max(0, index - 2)
+            stop = min(len(values), index + 3)
+            smoothed[index] = median(values[start:stop])
+
+        descent = 0.0
+        reference = smoothed[0]
+        for altitude in smoothed[1:]:
+            if altitude > reference:
+                reference = altitude
+                continue
+            drop = reference - altitude
+            if drop >= noise_threshold_m:
+                descent += drop
+                reference = altitude
+        return descent
 
     def backfill_elevation_streams(self) -> int:
         """Fill descent data for cached activities that have not been checked."""
@@ -141,17 +173,20 @@ class StravaClient:
             print("Strava credentials missing in .env file. Skipping elevation backfill.")
             return 0
         self.refresh_access_token()
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn:
             activity_ids = [row[0] for row in conn.execute(
-                "SELECT id FROM activities WHERE elevation_stream_checked = 0"
+                "SELECT id FROM activities WHERE elevation_stream_checked = 0 "
+                "OR COALESCE(elevation_stream_version, 0) < ?",
+                (ELEVATION_ALGORITHM_VERSION,),
             )]
         updated = 0
         for activity_id in activity_ids:
             descent = self._calculate_elevation_loss(self._get_elevation_stream(activity_id))
-            with sqlite3.connect(self.db_path) as conn:
+            with closing(sqlite3.connect(self.db_path)) as conn, conn:
                 conn.execute(
-                    "UPDATE activities SET descent_elevation_m = ?, elevation_stream_checked = 1 WHERE id = ?",
-                    (descent, activity_id),
+                    "UPDATE activities SET descent_elevation_m = ?, "
+                    "elevation_stream_checked = 1, elevation_stream_version = ? WHERE id = ?",
+                    (descent, ELEVATION_ALGORITHM_VERSION, activity_id),
                 )
             updated += 1
         print(f"Elevation backfill finished: {updated} activities checked.")
@@ -164,7 +199,7 @@ class StravaClient:
             return 0
 
         self.refresh_access_token()
-        with sqlite3.connect(self.db_path) as conn:
+        with closing(sqlite3.connect(self.db_path)) as conn:
             last_ts = conn.execute("SELECT MAX(start_date) FROM activities").fetchone()[0] or 0
 
         page, new_records = 1, 0
@@ -185,7 +220,7 @@ class StravaClient:
             if not activities:
                 break
 
-            with sqlite3.connect(self.db_path) as conn:
+            with closing(sqlite3.connect(self.db_path)) as conn, conn:
                 for activity in activities:
                     conn.execute(
                         """INSERT OR REPLACE INTO activities
@@ -193,8 +228,8 @@ class StravaClient:
                          elapsed_time, total_elevation_gain, kilojoules,
                          calories, workout_type, average_watts, weighted_average_watts,
                          device_watts, average_heartrate, has_power, descent_elevation_m,
-                         elevation_stream_checked)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                         elevation_stream_checked, elevation_stream_version)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                         (
                             activity["id"], activity.get("name", ""), activity.get("type", ""),
                             activity.get("sport_type") or activity.get("type", ""),
@@ -213,6 +248,7 @@ class StravaClient:
                                 self._get_elevation_stream(activity["id"])
                             ),
                             1,
+                            ELEVATION_ALGORITHM_VERSION,
                         ),
                     )
                     new_records += 1

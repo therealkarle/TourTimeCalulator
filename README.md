@@ -4,11 +4,9 @@ Tour Time Calculator is a local Python command-line application that uses your h
 
 It stores Strava data in a local SQLite cache and trains named regression models for:
 
-- elapsed time and moving time
-- energy consumption
-- average speed
-- average and weighted average power, when available
-- average heart rate, when available
+- moving time, stopped time, and elapsed time
+- energy consumption and average speed
+- chronological validation errors and likely prediction ranges
 
 The project is designed to keep personal activity data and trained models on your computer. Nothing is uploaded by the application.
 
@@ -127,7 +125,9 @@ Supported sport profiles are `ride`, `mtb-ride`, and `gravel`. The command also 
 python -m scripts.train_models --help
 ```
 
-For example, train a non-commute model using only distance and elevation:
+For example, train a non-commute model. New models always use distance and
+elevation; the legacy `--distance-elevation-only` option remains accepted for
+backward compatibility:
 
 ```bash
 python -m scripts.train_models \
@@ -161,6 +161,13 @@ python -m scripts.estimate_tour_duration \
   --distance-km 85 \
   --elevation-up-m 920 \
   --elevation-down-m 880
+
+# Override the historically predicted stopped time with planned breaks:
+python -m scripts.estimate_tour_duration \
+  --model <model-id> \
+  --distance-km 85 \
+  --elevation-m 920 \
+  --break-minutes 45
 ```
 
 ### Update existing models
@@ -170,6 +177,13 @@ currently cached activities:
 
 ```bash
 python -m scripts.update_models
+```
+
+Gezielt einzelne Modelle aktualisieren (Modell-ID oder Modellname):
+
+```bash
+python -m scripts.update_models --model rideall
+python -m scripts.update_models --model rideall --model trailrunall
 ```
 
 Run `python -m scripts.sync_strava` separately when the local Strava cache
@@ -186,7 +200,10 @@ models/                    # generated models and metadata
 
 The Strava API allows 200 calls per 15 minutes for the short-term limit. The synchronization client monitors API usage and pauses when the configured short-term threshold is reached.
 
-At least five valid activities are required to train a model for a sport. Predictions are estimates based on your historical activities and should not be treated as guarantees.
+At least 20 valid activities are required to train a model for a sport.
+Predictions include a range derived from chronological backtesting and warn
+when route inputs fall outside the model's training range. They remain
+estimates and should not be treated as guarantees.
 
 ## Project structure
 
@@ -270,12 +287,12 @@ models/                         Generated models (ignored by Git)
 
 #### `src/model_trainer.py`
 
-- **`train_models_for_sport(df, sport_name, model_name, ...)`** - Trains and persists regression models for elapsed time, moving time, energy consumption, average power, weighted average power, and average heart rate. Supports separate elevation parameters and distance/elevation-only models.
+- **`train_models_for_sport(df, sport_name, model_name, ...)`** - Trains and persists chronologically validated, regularized models for moving time, stopped time, and energy consumption. Supports separate ascent/descent features.
 
 #### `src/predictor.py`
 
 - **`list_models(model_dir)`** - Returns a list of all trained models with their metadata from the models directory.
-- **`predict_tour(model_name, distance_km, elevation_m, descent_m)`** - Predicts tour metrics (time, energy, power, heart rate) for a given model and route parameters.
+- **`predict_tour(model_name, distance_km, elevation_m, descent_m, stopped_time_s)`** - Predicts consistent moving, stopped, and elapsed times plus energy, uncertainty ranges, and out-of-range warnings.
 - **`_predict_optional(model, features)`** - Predicts optional metrics (power, heart rate) when available in the model.
 - **`_rounded_or_none(value)`** - Rounds predictions to integers or returns None for unavailable metrics.
 
