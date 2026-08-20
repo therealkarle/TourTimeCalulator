@@ -26,18 +26,40 @@ def update_model(metadata_path: Path) -> bool:
             ("end_date", filters.get("end_date")),
         )
     }
+    # Reuse exactly the filters that were used to train the saved model.
+    # Missing keys are kept compatible with older metadata files.
     load_filters = {
-        "activity_types": filters.get("activity_types"),
-        "commute": filters.get("commute"),
-        "equipment": filters.get("equipment"),
-        "power_data": filters.get("power_data"),
-        "min_distance_km": filters.get("min_distance_km", 3.0),
-        "max_distance_km": filters.get("max_distance_km"),
-        "min_elevation_m": filters.get("min_elevation_m"),
-        "max_elevation_m": filters.get("max_elevation_m"),
-        **date_filters,
+        key: filters.get(key)
+        for key in (
+            "activity_types", "commute", "equipment", "power_data",
+            "min_distance_km", "max_distance_km",
+            "min_elevation_m", "max_elevation_m",
+            "min_elevation_up_m", "max_elevation_up_m",
+            "min_elevation_down_m", "max_elevation_down_m",
+            "min_moving_time_s", "max_moving_time_s",
+            "min_elapsed_time_s", "max_elapsed_time_s",
+            "heart_rate_data",
+        )
     }
-    data = load_cleaned_data(metadata["sport_type"], **load_filters)
+    # Models created before filters were persisted used the historical 3 km
+    # default. Newer metadata contains the value explicitly (possibly None).
+    if "min_distance_km" not in filters:
+        load_filters["min_distance_km"] = 3.0
+    load_filters.update(date_filters)
+    default_elevation_mode: str = (
+        "separate" if metadata.get("elevation_mode") == "separate" else "up"
+    )
+    stored_elevation_mode = filters.get("elevation_mode")
+    elevation_mode: str = (
+        stored_elevation_mode
+        if isinstance(stored_elevation_mode, str)
+        and stored_elevation_mode in {"up", "separate"}
+        else default_elevation_mode
+    )
+    print(f"Updating model '{metadata.get('model_name', metadata_path.stem)}'...")
+    data = load_cleaned_data(
+        metadata["sport_type"], **load_filters, elevation_mode=elevation_mode
+    )
     if data.empty:
         print(f"No data for '{metadata_path.stem}'. Skipping.")
         return False
@@ -91,6 +113,7 @@ def main() -> int:
         added = StravaClient().sync_activities()
         print(f"Done. {added} activities were added or updated.")
 
+    print("Updating cached elevation data...")
     StravaClient().backfill_elevation_streams()
 
     metadata_files = sorted(MODEL_DIR.glob("*.txt"))
@@ -98,6 +121,7 @@ def main() -> int:
         print(f"No model metadata found in {MODEL_DIR}.")
         return 1
 
+    print(f"Retraining {len(metadata_files)} saved models...")
     updated = sum(update_model(path) for path in metadata_files)
     print(f"Updated {updated} of {len(metadata_files)} models.")
     return 0 if updated else 1
