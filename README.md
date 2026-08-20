@@ -165,13 +165,15 @@ python -m scripts.estimate_tour_duration \
 
 ### Update existing models
 
-Retrain all saved models using the filters stored in their metadata:
+Retrain all saved models using the filters stored in their metadata and the
+currently cached activities:
 
 ```bash
 python -m scripts.update_models
 ```
 
-Use `--no-sync` to update from the existing local cache without contacting Strava.
+Run `python -m scripts.sync_strava` separately when the local Strava cache
+should be updated.
 
 ## Data, privacy, and rate limits
 

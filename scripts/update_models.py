@@ -1,6 +1,5 @@
-"""Synchronize new activities and retrain all existing models."""
+"""Retrain all existing models from the local activity cache."""
 
-import argparse
 import json
 import sys
 from datetime import date
@@ -12,7 +11,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from src.config import MODEL_DIR
 from src.feature_eng import load_cleaned_data
 from src.model_trainer import BASE_FEATURES, train_models_for_sport
-from src.strava_client import StravaClient
 
 
 def update_model(metadata_path: Path) -> bool:
@@ -102,20 +100,6 @@ def update_model(metadata_path: Path) -> bool:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--no-sync", action="store_true", help="Do not fetch new Strava activities"
-    )
-    args = parser.parse_args()
-
-    if not args.no_sync:
-        print("Synchronizing Strava activities...")
-        added = StravaClient().sync_activities()
-        print(f"Done. {added} activities were added or updated.")
-
-    print("Updating cached elevation data...")
-    StravaClient().backfill_elevation_streams()
-
     metadata_files = sorted(MODEL_DIR.glob("*.txt"))
     if not metadata_files:
         print(f"No model metadata found in {MODEL_DIR}.")
