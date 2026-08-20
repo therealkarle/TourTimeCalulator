@@ -200,7 +200,7 @@ models/                    # generated models and metadata
 
 The Strava API allows 200 calls per 15 minutes for the short-term limit. The synchronization client monitors API usage and pauses when the configured short-term threshold is reached.
 
-At least 20 valid activities are required to train a model for a sport.
+At least five valid activities are required to train a model for a sport.
 Predictions include a range derived from chronological backtesting and warn
 when route inputs fall outside the model's training range. They remain
 estimates and should not be treated as guarantees.

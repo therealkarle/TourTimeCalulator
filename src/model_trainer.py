@@ -19,7 +19,7 @@ from src.feature_eng import MECHANICAL_EFFICIENCY
 BASE_FEATURES = ["distance_km", "elevation_m"]
 FEATURES = BASE_FEATURES
 SEPARATE_ELEVATION_FEATURES = ["distance_km", "elevation_up_m", "elevation_down_m"]
-MIN_TRAINING_SAMPLES = 20
+MIN_TRAINING_SAMPLES = 5
 
 
 class NonNegativeRegressor(RegressorMixin, BaseEstimator):
