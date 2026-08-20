@@ -11,7 +11,7 @@ import pandas as pd
 from scripts import train_presets, update_models
 from scripts.train_presets import get_last_365_days
 from src import feature_eng, predictor
-from src.feature_eng import MECHANICAL_EFFICIENCY, load_cleaned_data
+from src.feature_eng import load_cleaned_data
 from src.model_trainer import MIN_TRAINING_SAMPLES, train_models_for_sport
 from src.strava_client import StravaClient, ensure_db_schema
 
@@ -80,16 +80,15 @@ class FeatureEngineeringTests(unittest.TestCase):
         with patch.object(feature_eng, "DB_PATH", self.db_path):
             return load_cleaned_data(min_distance_km=None, **kwargs)
 
-    def test_calories_are_preferred_over_mechanical_kilojoules(self) -> None:
+    def test_calories_are_used_and_kilojoules_are_ignored(self) -> None:
         self._insert_activity(1, calories=500.0, kilojoules=1000.0)
         frame = self._load()
         self.assertEqual(frame.iloc[0]["kcal_clean"], 500.0)
 
-    def test_kilojoules_use_explicit_efficiency_conversion(self) -> None:
+    def test_activity_without_calories_is_excluded(self) -> None:
         self._insert_activity(1, calories=None, kilojoules=1000.0)
         frame = self._load()
-        expected = 1000.0 / (4.184 * MECHANICAL_EFFICIENCY)
-        self.assertAlmostEqual(frame.iloc[0]["kcal_clean"], expected)
+        self.assertTrue(frame.empty)
 
     def test_stop_heavy_activity_is_retained_and_stop_time_is_derived(self) -> None:
         self._insert_activity(1, moving_time=1800, elapsed_time=7200)
@@ -179,6 +178,7 @@ class ModelIntegrationTests(unittest.TestCase):
             self.assertEqual(metadata["schema_version"], 2)
             self.assertEqual(metadata["regression_type"], "ridge")
             self.assertEqual(metadata["features"], ["distance_km", "elevation_m"])
+            self.assertEqual(metadata["energy"], {"unit": "kcal", "source": "calories"})
             self.assertIn("stopped_time", metadata["regressions"])
             self.assertIn("error_p90", metadata["regressions"]["moving_time"])
 
@@ -190,6 +190,12 @@ class ModelIntegrationTests(unittest.TestCase):
                     "test-model", 20.0, 180.0, stopped_time_s=3600
                 )
 
+                metadata.pop("energy")
+                (model_dir / "test-model.txt").write_text(
+                    json.dumps(metadata), encoding="utf-8"
+                )
+                legacy_energy = predictor.predict_tour("test-model", 20.0, 180.0)
+
             self.assertGreaterEqual(
                 longer["predicted_moving_time_sec"], shorter["predicted_moving_time_sec"]
             )
@@ -199,6 +205,8 @@ class ModelIntegrationTests(unittest.TestCase):
                 + shorter["predicted_stopped_time_sec"],
             )
             self.assertEqual(planned_break["predicted_stopped_time_sec"], 3600)
+            self.assertIsNone(legacy_energy["predicted_kcal"])
+            self.assertIsNone(legacy_energy["predicted_kcal_interval"])
             self.assertTrue(outside["warnings"])
             self.assertGreaterEqual(
                 shorter["predicted_elapsed_time_interval_sec"][1],

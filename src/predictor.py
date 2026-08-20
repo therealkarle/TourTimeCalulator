@@ -75,9 +75,16 @@ def predict_tour(
     # Legacy artifacts only contain a moving-time model.
     elapsed_model = regression_models.get("elapsed_time")
     moving_model = regression_models.get("moving_time", trained_model.get("time_model"))
-    kcal_model = regression_models.get("kcal_clean", trained_model.get("kcal_model"))
-    if moving_model is None or kcal_model is None:
+    energy_source = selected.get("energy", {}).get("source")
+    kcal_model = (
+        regression_models.get("kcal_clean", trained_model.get("kcal_model"))
+        if energy_source == "calories"
+        else None
+    )
+    if moving_model is None:
         raise ValueError(f"Model artifact for '{model_name}' is incomplete")
+    if kcal_model is None:
+        warnings.append("Energy unavailable: model was not trained from calories")
     if elapsed_model is None:
         elapsed_model = moving_model
     predicted_moving = max(0.0, float(moving_model.predict(features)[0]))
@@ -92,7 +99,11 @@ def predict_tour(
         predicted_elapsed = max(0.0, float(elapsed_model.predict(features)[0]))
         predicted_moving = min(predicted_elapsed, predicted_moving)
         predicted_stopped = predicted_elapsed - predicted_moving
-    predicted_kcal = max(0.0, float(kcal_model.predict(features)[0]))
+    predicted_kcal = (
+        max(0.0, float(kcal_model.predict(features)[0]))
+        if kcal_model is not None
+        else None
+    )
     predicted_average_power = _predict_optional(regression_models.get("average_power_watts"), features)
     predicted_weighted_power = _predict_optional(
         regression_models.get("weighted_average_power_watts"), features
@@ -123,15 +134,19 @@ def predict_tour(
         "predicted_elapsed_time_sec": round(predicted_elapsed),
         "predicted_moving_time_sec": round(predicted_moving),
         "predicted_stopped_time_sec": round(predicted_stopped),
-        "predicted_kcal": round(predicted_kcal),
+        "predicted_kcal": round(predicted_kcal) if predicted_kcal is not None else None,
         "predicted_elapsed_time_interval_sec": [
             round(max(0.0, predicted_elapsed - elapsed_error)),
             round(predicted_elapsed + elapsed_error),
         ],
-        "predicted_kcal_interval": [
-            round(max(0.0, predicted_kcal - energy_error)),
-            round(predicted_kcal + energy_error),
-        ],
+        "predicted_kcal_interval": (
+            [
+                round(max(0.0, predicted_kcal - energy_error)),
+                round(predicted_kcal + energy_error),
+            ]
+            if predicted_kcal is not None
+            else None
+        ),
         "avg_speed_kmh": round(speed, 1),
         "warnings": warnings,
         "average_power_watts": _rounded_or_none(predicted_average_power),

@@ -14,8 +14,6 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
 from src.config import MODEL_DIR
-from src.feature_eng import MECHANICAL_EFFICIENCY
-
 BASE_FEATURES = ["distance_km", "elevation_m"]
 FEATURES = BASE_FEATURES
 SEPARATE_ELEVATION_FEATURES = ["distance_km", "elevation_up_m", "elevation_down_m"]
@@ -261,8 +259,7 @@ def train_models_for_sport(
         "regressions": regressions,
         "energy": {
             "unit": "kcal",
-            "source_preference": ["calories", "kilojoules"],
-            "mechanical_efficiency": MECHANICAL_EFFICIENCY,
+            "source": "calories",
         },
         "duration_intercept_seconds": regressions["moving_time"]["intercept"],
         "duration_coefficients": regressions["moving_time"]["coefficients"],

@@ -19,9 +19,6 @@ SPORT_ALIASES = {
     "trail_run": ("TrailRun",),
 }
 
-MECHANICAL_EFFICIENCY = 0.24
-
-
 def available_sport_profiles() -> dict[str, tuple[str, ...]]:
     """Return English profiles with at least one matching cached Strava activity."""
     ensure_db_schema(DB_PATH)
@@ -163,11 +160,8 @@ def load_cleaned_data(
     if heart_rate_data is not None:
         heart_rate_available = frame["average_heartrate"].notna()
         frame = frame[heart_rate_available == heart_rate_data]
-    kilojoules = pd.to_numeric(frame["kilojoules"], errors="coerce")
     calories = pd.to_numeric(frame["calories"], errors="coerce")
-    frame["kcal_clean"] = calories.fillna(
-        kilojoules / (4.184 * MECHANICAL_EFFICIENCY)
-    )
+    frame["kcal_clean"] = calories
     frame["average_power_watts"] = pd.to_numeric(frame["average_watts"], errors="coerce")
     frame["weighted_average_power_watts"] = pd.to_numeric(
         frame["weighted_average_watts"], errors="coerce"

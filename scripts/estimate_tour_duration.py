@@ -76,11 +76,14 @@ def main() -> None:
     print(f"Moving Time:       {moving_hours}h {moving_remainder // 60:02d}m")
     stopped_hours, stopped_remainder = divmod(result['predicted_stopped_time_sec'], 3600)
     print(f"Stopped Time:      {stopped_hours}h {stopped_remainder // 60:02d}m")
-    kcal_low, kcal_high = result["predicted_kcal_interval"]
-    print(
-        f"Estimated Energy:  {result['predicted_kcal']} kcal "
-        f"({kcal_low}–{kcal_high})"
-    )
+    if result["predicted_kcal"] is not None:
+        kcal_low, kcal_high = result["predicted_kcal_interval"]
+        print(
+            f"Estimated Energy:  {result['predicted_kcal']} kcal "
+            f"({kcal_low}–{kcal_high})"
+        )
+    else:
+        print("Estimated Energy:  unavailable (no kcal-trained model)")
     print(f"Avg Speed:         {result['avg_speed_kmh']} km/h")
     if result["average_power_watts"] is not None:
         print(f"Average Power:     {result['average_power_watts']} W")
