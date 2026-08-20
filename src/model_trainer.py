@@ -20,6 +20,7 @@ BASE_FEATURES = ["distance_km", "elevation_m"]
 FEATURES = BASE_FEATURES
 SEPARATE_ELEVATION_FEATURES = ["distance_km", "elevation_up_m", "elevation_down_m"]
 MIN_TRAINING_SAMPLES = 5
+REGRESSION_TYPES = {"linear", "ridge"}
 
 
 class NonNegativeRegressor(RegressorMixin, BaseEstimator):
@@ -43,6 +44,17 @@ def _ridge_model(alpha: float) -> NonNegativeRegressor:
             [
                 ("scale", StandardScaler()),
                 ("regression", Ridge(alpha=alpha, positive=True)),
+            ]
+        )
+    )
+
+
+def _linear_model() -> NonNegativeRegressor:
+    return NonNegativeRegressor(
+        Pipeline(
+            [
+                ("scale", StandardScaler()),
+                ("regression", LinearRegression(positive=True)),
             ]
         )
     )
@@ -90,7 +102,7 @@ def _select_model(
     X: pd.DataFrame,
     y: pd.Series,
 ) -> tuple[NonNegativeRegressor, dict[str, float | None], float]:
-    """Select regularization by chronological error and benchmark legacy OLS."""
+    """Select Ridge regularization by chronological error."""
     baseline_metrics = _cross_validate(NonNegativeRegressor(LinearRegression()), X, y)
     candidates = [(_ridge_model(alpha), alpha) for alpha in (0.1, 1.0, 10.0, 100.0)]
     scored = [(_cross_validate(model, X, y), model, alpha) for model, alpha in candidates]
@@ -123,9 +135,14 @@ def train_models_for_sport(
     distance_elevation_only: bool = False,
     filters: dict | None = None,
     separate_elevation: bool = False,
+    regression_type: str = "ridge",
 ) -> bool:
     """Train validated regressors for moving time, stopped time, and energy."""
     del distance_elevation_only  # Retained for compatibility with existing callers.
+    if regression_type not in REGRESSION_TYPES:
+        raise ValueError(
+            f"regression_type must be one of: {', '.join(sorted(REGRESSION_TYPES))}"
+        )
     model_features = SEPARATE_ELEVATION_FEATURES if separate_elevation else BASE_FEATURES
     required_columns = model_features + ["moving_time", "stopped_time", "kcal_clean"]
     if len(df) < MIN_TRAINING_SAMPLES:
@@ -145,7 +162,7 @@ def train_models_for_sport(
     models: dict[str, NonNegativeRegressor] = {}
     metrics: dict[str, dict[str, float | None]] = {}
     sample_counts: dict[str, int] = {}
-    alphas: dict[str, float] = {}
+    alphas: dict[str, float | None] = {}
 
     for target, label in targets.items():
         columns = model_features + [target]
@@ -159,7 +176,20 @@ def train_models_for_sport(
             return False
         target_X = target_frame[model_features].reset_index(drop=True)
         target_y = target_frame[target].reset_index(drop=True)
-        model, target_metrics, alpha = _select_model(target_X, target_y)
+        if regression_type == "ridge":
+            model, target_metrics, alpha = _select_model(target_X, target_y)
+        else:
+            model = _linear_model()
+            target_metrics = _cross_validate(model, target_X, target_y)
+            baseline_metrics = _cross_validate(
+                NonNegativeRegressor(LinearRegression()), target_X, target_y
+            )
+            target_metrics["legacy_ols_mae"] = baseline_metrics["mae"]
+            target_metrics["legacy_ols_median_absolute_error"] = baseline_metrics[
+                "median_absolute_error"
+            ]
+            model = model.fit(target_X, target_y)
+            alpha = None
         models[target] = model
         metrics[target] = target_metrics
         sample_counts[target] = len(target_frame)
@@ -185,6 +215,7 @@ def train_models_for_sport(
     joblib.dump(
         {
             "schema_version": 2,
+            "regression_type": regression_type,
             "model_name": model_name.strip(),
             "sport_type": sport_name.lower(),
             "models": models,
@@ -216,6 +247,7 @@ def train_models_for_sport(
     }
     metadata = {
         "schema_version": 2,
+        "regression_type": regression_type,
         "model_id": model_id,
         "model_name": model_name.strip(),
         "sport_type": sport_name.lower(),

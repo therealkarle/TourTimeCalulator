@@ -115,6 +115,9 @@ python -m scripts.train_models --sport ride --name "Road cycling"
 python -m scripts.train_models --sport mtb-ride --name "Mountain biking"
 python -m scripts.train_models --sport gravel --name "Gravel riding"
 
+# New models use Ridge by default; request Linear explicitly:
+python -m scripts.train_models --sport ride --name "Road cycling linear" --regression linear
+
 # Train a model with separate ascent and descent parameters
 python -m scripts.train_models --sport ride --name "Ascent and descent" --separate-elevation
 ```
@@ -177,6 +180,14 @@ currently cached activities:
 
 ```bash
 python -m scripts.update_models
+```
+
+Create one Linear and one Ridge variant from every legacy model. The original
+artifacts are retained under `models/legacy/` after both variants train
+successfully:
+
+```bash
+python -m scripts.update_models --create-variants
 ```
 
 Gezielt einzelne Modelle aktualisieren (Modell-ID oder Modellname):

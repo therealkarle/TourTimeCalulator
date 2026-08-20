@@ -39,6 +39,7 @@ def train_sport(
     end_date: date | None = None,
     separate_elevation: bool = False,
     elevation_mode: str = "up",
+    regression_type: str = "ridge",
 ) -> bool:
     """Load cleaned data and train one named model for one sport.
     
@@ -74,8 +75,9 @@ def train_sport(
                  "max_elapsed_time_s": max_elapsed_time_s, "heart_rate_data": heart_rate_data,
                  "start_date": start_date.isoformat() if start_date else None,
                  "end_date": end_date.isoformat() if end_date else None,
-                 "elevation_mode": elevation_mode},
+                 "elevation_mode": elevation_mode, "regression_type": regression_type},
         separate_elevation=separate_elevation,
+        regression_type=regression_type,
     )
 
 
@@ -96,6 +98,12 @@ def main() -> None:
         "--separate-elevation",
         action="store_true",
         help="Train using separate ascent and descent elevation features",
+    )
+    parser.add_argument(
+        "--regression",
+        choices=["linear", "ridge"],
+        default="ridge",
+        help="Regression method (default: ridge)",
     )
     parser.add_argument("--activity-type", action="append", dest="activity_types",
                         help="Exact Strava sport_type; may be specified multiple times")
@@ -150,6 +158,7 @@ def main() -> None:
         start_date=args.start_date,
         end_date=args.end_date,
         separate_elevation=args.separate_elevation,
+        regression_type=args.regression,
     )
 
 

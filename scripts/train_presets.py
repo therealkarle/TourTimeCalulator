@@ -144,7 +144,10 @@ def refresh_saved_presets() -> None:
             PRESETS[name] = config
 
 
-def train_all_presets(dry_run: bool = False) -> None:
+def train_all_presets(
+    dry_run: bool = False,
+    regression_type: str | None = None,
+) -> None:
     """Train all preset models."""
     refresh_saved_presets()
     print(f"\nTraining all presets\n")
@@ -160,7 +163,8 @@ def train_all_presets(dry_run: bool = False) -> None:
                 window = f"{config.get('start_date')} to {config.get('end_date')}"
             else:
                 window = "all data"
-            print(f"  - {preset_name} ({window})")
+            method = regression_type or config.get("regression_type", "ridge")
+            print(f"  - {preset_name} ({window}, {method})")
         return
 
     results = {}
@@ -171,6 +175,8 @@ def train_all_presets(dry_run: bool = False) -> None:
 
         # Extract and apply date range based on use_365d flag
         config = config.copy()
+        if regression_type is not None:
+            config["regression_type"] = regression_type
         has_explicit_dates = config.get("start_date") is not None or config.get("end_date") is not None
         use_365d = False if has_explicit_dates else config.pop("use_365d", False)
         sport_type = config.pop("sport_type")
@@ -204,7 +210,11 @@ def train_all_presets(dry_run: bool = False) -> None:
         print(f"{preset_name}: {result}")
 
 
-def train_single_preset(preset_name: str, dry_run: bool = False) -> None:
+def train_single_preset(
+    preset_name: str,
+    dry_run: bool = False,
+    regression_type: str | None = None,
+) -> None:
     """Train a single preset model."""
     if preset_name not in PRESETS:
         print(f"Error: Preset '{preset_name}' not found.")
@@ -212,6 +222,8 @@ def train_single_preset(preset_name: str, dry_run: bool = False) -> None:
         return
 
     config = PRESETS[preset_name].copy()
+    if regression_type is not None:
+        config["regression_type"] = regression_type
     
     # start_date and end_date have priority over use_365d
     has_explicit_dates = config.get("start_date") is not None or config.get("end_date") is not None
@@ -322,6 +334,17 @@ def _elevation_mode() -> str:
         print("Please enter 'up' or 'separate', or leave blank for 'up'.")
 
 
+def _regression_type() -> str:
+    """Ask which regression method the preset should use."""
+    while True:
+        choice = input("Regression method (ridge/linear) [ridge]: ").strip().lower()
+        if not choice or choice == "ridge":
+            return "ridge"
+        if choice == "linear":
+            return "linear"
+        print("Please enter 'ridge' or 'linear', or leave blank for 'ridge'.")
+
+
 def _time_to_seconds(prompt: str) -> int | None:
     while True:
         raw = input(prompt).strip()
@@ -360,6 +383,7 @@ def _custom_preset() -> tuple[str, dict]:
     
     elevation_mode = _elevation_mode()
     config["elevation_mode"] = elevation_mode
+    config["regression_type"] = _regression_type()
     
     if elevation_mode == "separate":
         config["min_elevation_up_m"] = _optional_number("Min. uphill elevation (m): ")
@@ -422,12 +446,14 @@ def train_interactive(dry_run: bool = False) -> None:
             train_custom_preset(dry_run)
             return
         if choice == all_option:
-            train_all_presets(dry_run)
+            train_all_presets(dry_run, _regression_type())
             return
         if choice == exit_option:
             return
         if 1 <= choice <= len(presets_list):
-            train_single_preset(presets_list[choice - 1], dry_run)
+            train_single_preset(
+                presets_list[choice - 1], dry_run, _regression_type()
+            )
             return
         print(f"Please enter a number between 1 and {exit_option}.")
 
@@ -455,12 +481,21 @@ def main() -> None:
         action="store_true",
         help="Train all presets"
     )
+    parser.add_argument(
+        "--regression",
+        choices=["linear", "ridge"],
+        help="Override the preset regression method (default: saved value or ridge)",
+    )
     args = parser.parse_args()
 
     if args.all:
-        train_all_presets(dry_run=args.dry_run)
+        train_all_presets(dry_run=args.dry_run, regression_type=args.regression)
     elif args.preset:
-        train_single_preset(args.preset, dry_run=args.dry_run)
+        train_single_preset(
+            args.preset,
+            dry_run=args.dry_run,
+            regression_type=args.regression,
+        )
     else:
         train_interactive(dry_run=args.dry_run)
 

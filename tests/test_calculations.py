@@ -8,8 +8,8 @@ from unittest.mock import patch
 
 import pandas as pd
 
+from scripts import train_presets, update_models
 from scripts.train_presets import get_last_365_days
-from scripts import update_models
 from src import feature_eng, predictor
 from src.feature_eng import MECHANICAL_EFFICIENCY, load_cleaned_data
 from src.model_trainer import MIN_TRAINING_SAMPLES, train_models_for_sport
@@ -126,6 +126,16 @@ class PresetWindowTests(unittest.TestCase):
         self.assertEqual((end - start).days, 364)
         self.assertEqual(end, date.today())
 
+    def test_builtin_preset_accepts_ridge_override(self) -> None:
+        with (
+            patch.object(train_presets, "train_sport", return_value=True) as train,
+            patch("builtins.print"),
+        ):
+            train_presets.train_single_preset(
+                "gravel_all", regression_type="ridge"
+            )
+        self.assertEqual(train.call_args.kwargs["regression_type"], "ridge")
+
 
 class ModelIntegrationTests(unittest.TestCase):
     @staticmethod
@@ -167,6 +177,7 @@ class ModelIntegrationTests(unittest.TestCase):
             self.assertTrue(trained)
             metadata = json.loads((model_dir / "test-model.txt").read_text(encoding="utf-8"))
             self.assertEqual(metadata["schema_version"], 2)
+            self.assertEqual(metadata["regression_type"], "ridge")
             self.assertEqual(metadata["features"], ["distance_km", "elevation_m"])
             self.assertIn("stopped_time", metadata["regressions"])
             self.assertIn("error_p90", metadata["regressions"]["moving_time"])
@@ -193,6 +204,24 @@ class ModelIntegrationTests(unittest.TestCase):
                 shorter["predicted_elapsed_time_interval_sec"][1],
                 shorter["predicted_elapsed_time_sec"],
             )
+
+    def test_linear_can_be_selected_explicitly(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            model_dir = Path(temp_dir)
+            self.assertTrue(
+                train_models_for_sport(
+                    self._training_frame(),
+                    "ride",
+                    "linear-model",
+                    model_dir=model_dir,
+                    regression_type="linear",
+                )
+            )
+            metadata = json.loads(
+                (model_dir / "linear-model.txt").read_text(encoding="utf-8")
+            )
+            self.assertEqual(metadata["regression_type"], "linear")
+            self.assertIsNone(metadata["regressions"]["moving_time"]["alpha"])
 
     def test_saved_separate_model_update_reuses_filters(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -230,6 +259,44 @@ class ModelIntegrationTests(unittest.TestCase):
             self.assertEqual(load.call_args.kwargs["elevation_mode"], "separate")
             self.assertEqual(load.call_args.kwargs["min_distance_km"], 5.0)
             self.assertTrue(train.call_args.kwargs["separate_elevation"])
+            self.assertEqual(train.call_args.kwargs["regression_type"], "linear")
+
+    def test_legacy_model_is_migrated_to_two_variants(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            model_dir = Path(temp_dir)
+            metadata_path = model_dir / "tour.txt"
+            source_model = model_dir / "tour.joblib"
+            metadata_path.write_text(
+                json.dumps(
+                    {
+                        "model_name": "Tour",
+                        "model_file": "tour.joblib",
+                        "sport_type": "ride",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            source_model.write_bytes(b"legacy")
+
+            def fake_update(_path, regression_type_override, model_name_override):
+                variant_id = update_models._model_id(model_name_override)
+                (model_dir / f"{variant_id}.txt").write_text("{}", encoding="utf-8")
+                (model_dir / f"{variant_id}.joblib").write_bytes(
+                    regression_type_override.encode("ascii")
+                )
+                return True
+
+            with (
+                patch.object(update_models, "MODEL_DIR", model_dir),
+                patch.object(update_models, "update_model", side_effect=fake_update),
+                patch("builtins.print"),
+            ):
+                self.assertTrue(update_models.create_model_variants(metadata_path))
+
+            self.assertTrue((model_dir / "tour_linear.txt").exists())
+            self.assertTrue((model_dir / "tour_ridge.txt").exists())
+            self.assertTrue((model_dir / "legacy" / "tour.txt").exists())
+            self.assertTrue((model_dir / "legacy" / "tour.joblib").exists())
 
 
 if __name__ == "__main__":
