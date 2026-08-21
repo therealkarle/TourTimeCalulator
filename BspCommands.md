@@ -2,6 +2,12 @@
 
 ## Modelltraining mit ausgewählten Strava-Aktivitäten
 
+## Modelltraining mit mehreren Sporttypen und Aktivitäten
+
+```powershell
+python -m scripts.train_models --sport ride,gravelRide --name "HaiderFast" --activity-id 7108949467,11378350577,9367798801
+```
+
 ```powershell
 python -m scripts.train_models --sport ride --name "HaiderFast" --activity-id 7108949467 --activity-id 11378350577 --activity-id 9367798801
 ```

@@ -16,7 +16,7 @@ SPORTS = {key: key for key in SPORT_ALIASES}
 
 
 def train_sport(
-    sport_name: str,
+    sport_name: str | list[str],
     model_name: str,
     distance_elevation_only: bool = False,
     activity_types: list[str] | None = None,
@@ -50,13 +50,16 @@ def train_sport(
     # Keep the model feature selection in sync with the selected elevation mode.
     # Explicit ``separate_elevation=True`` remains supported for direct callers.
     separate_elevation = separate_elevation or elevation_mode == "separate"
+    sport_names = [sport_name] if isinstance(sport_name, str) else sport_name
+    if not sport_names or any(not value.strip() for value in sport_names):
+        raise ValueError("sport must contain at least one value")
     if activity_ids is not None:
         if any(isinstance(value, bool) or int(value) <= 0 for value in activity_ids):
             raise ValueError("activity_ids must contain positive integers")
         StravaClient().ensure_activity_ids(activity_ids)
 
     data = load_cleaned_data(
-        sport_name, activity_types, commute, equipment, power_data,
+        sport_names, activity_types, commute, equipment, power_data,
         min_distance_km, max_distance_km, min_elevation_m, max_elevation_m,
         min_elevation_up_m, max_elevation_up_m, min_elevation_down_m, max_elevation_down_m,
         min_moving_time_s, max_moving_time_s, min_elapsed_time_s,
@@ -69,7 +72,7 @@ def train_sport(
         return False
     return train_models_for_sport(
         data,
-        sport_name,
+        ",".join(sport_names),
         model_name,
         distance_elevation_only=distance_elevation_only,
         filters={"activity_types": activity_types, "commute": commute, "equipment": equipment,
@@ -93,8 +96,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--sport",
-        choices=sorted(SPORTS),
-        help="Sport for the model",
+        # Comma-separated values are parsed below so mixed Strava sport types
+        # such as ``ride,gravelRide`` can be trained together.
+        help="Sport type(s), comma-separated (for example: ride,gravelRide)",
     )
     parser.add_argument("--name", help="Name of the model")
     parser.add_argument(
@@ -130,8 +134,8 @@ def main() -> None:
         "--activity-id",
         action="append",
         dest="activity_ids",
-        type=positive_int,
-        help="Strava activity ID; may be specified multiple times",
+        type=str,
+        help="Strava activity ID(s), comma-separated or repeated",
     )
     args = parser.parse_args()
 
@@ -139,10 +143,24 @@ def main() -> None:
     choices = sorted(detected or SPORTS)
     if detected:
         print(f"Detected Strava sport profiles: {', '.join(choices)}")
-    sport = args.sport or input("Sport profile (ride/mtb-ride/gravel): ").strip().lower()
-    while sport not in choices:
-        print(f"Please enter one of: {', '.join(choices)}.")
-        sport = input("Sport profile (ride/mtb-ride/gravel): ").strip().lower()
+    sport = args.sport or input("Sport profile(s), comma-separated: ").strip()
+    sport_names = [value.strip() for value in sport.split(",") if value.strip()]
+    while not sport_names:
+        print("Please enter at least one sport profile.")
+        sport = input("Sport profile(s), comma-separated: ").strip()
+        sport_names = [value.strip() for value in sport.split(",") if value.strip()]
+
+    activity_ids: list[int] | None = None
+    if args.activity_ids:
+        try:
+            activity_ids = [
+                positive_int(value.strip())
+                for group in args.activity_ids
+                for value in group.split(",")
+                if value.strip()
+            ]
+        except argparse.ArgumentTypeError as exc:
+            parser.error(str(exc))
 
     model_name = args.name or input("Model name: ").strip()
     while not model_name:
@@ -164,7 +182,7 @@ def main() -> None:
         parser.error("--start-date cannot be after --end-date")
 
     train_sport(
-        sport, model_name, args.distance_elevation_only, args.activity_types,
+        sport_names, model_name, args.distance_elevation_only, args.activity_types,
         commute, args.equipment, power_data,
         min_distance_km=args.min_distance_km,
         max_distance_km=args.max_distance_km,
@@ -174,7 +192,7 @@ def main() -> None:
         end_date=args.end_date,
         separate_elevation=args.separate_elevation,
         regression_type=args.regression,
-        activity_ids=args.activity_ids,
+        activity_ids=activity_ids,
     )
 
 

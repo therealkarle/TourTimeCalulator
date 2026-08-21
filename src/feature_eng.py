@@ -33,7 +33,7 @@ def available_sport_profiles() -> dict[str, tuple[str, ...]]:
 
 
 def load_cleaned_data(
-    sport_type: str = "Ride",
+    sport_type: str | list[str] = "Ride",
     activity_types: list[str] | None = None,
     commute: bool | None = None,
     equipment: list[str] | None = None,
@@ -79,12 +79,21 @@ def load_cleaned_data(
         end_date=end_date,
     )
     ensure_db_schema(DB_PATH)
-    requested = SPORT_ALIASES.get(sport_type.lower(), (sport_type, f"Virtual{sport_type}"))
+    sport_values = [sport_type] if isinstance(sport_type, str) else sport_type
+    requested = tuple(
+        dict.fromkeys(
+            sport_name
+            for value in sport_values
+            for sport_name in SPORT_ALIASES.get(
+                value.lower(), (value, f"Virtual{value}")
+            )
+        )
+    )
     type_clause = ""
     params: tuple[str | int, ...] = tuple(requested)
     if activity_types:
         type_clause = (
-            " AND COALESCE(sport_type, type) IN "
+            " AND LOWER(COALESCE(sport_type, type)) IN "
             f"({','.join('?' for _ in activity_types)})"
         )
         params += tuple(activity_types)
@@ -96,10 +105,10 @@ def load_cleaned_data(
         params += tuple(int(value) for value in activity_ids)
     with closing(sqlite3.connect(DB_PATH)) as conn:
         frame = pd.read_sql_query(
-            f"SELECT * FROM activities WHERE COALESCE(sport_type, type) IN "
+        f"SELECT * FROM activities WHERE LOWER(COALESCE(sport_type, type)) IN "
         f"({','.join('?' for _ in requested)}){type_clause}{id_clause}",
             conn,
-            params=params,
+        params=tuple(value.lower() if isinstance(value, str) else value for value in params),
         )
     if frame.empty:
         return frame
