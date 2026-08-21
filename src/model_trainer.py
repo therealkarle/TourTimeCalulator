@@ -192,6 +192,7 @@ def train_models_for_sport(
                 model = _ridge_model(1.0)
                 target_metrics = _unavailable_metrics()
                 alpha = 1.0
+                model.fit(target_X, target_y)
         else:
             model = _linear_model()
             try:
@@ -217,11 +218,25 @@ def train_models_for_sport(
         target_metrics = metrics[target]
         mape = target_metrics["mape_pct"]
         mape_label = f"{mape:.1f}%" if mape is not None else "n/a"
+        mae_label = (
+            f"{target_metrics['mae']:.1f}"
+            if target_metrics["mae"] is not None
+            else "n/a"
+        )
+        median_label = (
+            f"{target_metrics['median_absolute_error']:.1f}"
+            if target_metrics["median_absolute_error"] is not None
+            else "n/a"
+        )
+        p90_label = (
+            f"{target_metrics['error_p90']:.1f}"
+            if target_metrics["error_p90"] is not None
+            else "n/a"
+        )
         print(
             f"[{sport_name.upper()}] {label}: chronological MAE "
-            f"{target_metrics['mae']:.1f}, median error "
-            f"{target_metrics['median_absolute_error']:.1f}, MAPE {mape_label}, "
-            f"p90 ±{target_metrics['error_p90']:.1f}"
+            f"{mae_label}, median error {median_label}, MAPE {mape_label}, "
+            f"p90 ±{p90_label}"
         )
 
     model_id = re.sub(r"[^a-zA-Z0-9_-]+", "_", model_name.strip()).strip("_-").lower()
