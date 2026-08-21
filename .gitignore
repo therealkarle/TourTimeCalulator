@@ -7,3 +7,5 @@ __pycache__/
 models/*.txt
 models/legacy/
 presets/
+
+ActivityIDCollections/
