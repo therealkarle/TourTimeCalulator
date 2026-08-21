@@ -112,6 +112,7 @@ Or provide the sport and model name directly:
 
 ```bash
 python -m scripts.train_models --sport ride --name "Road cycling"
+python -m scripts.train_models --sport ride --name "Selected rides" --activity-id 123456 --activity-id 789012
 python -m scripts.train_models --sport mtb-ride --name "Mountain biking"
 python -m scripts.train_models --sport gravel --name "Gravel riding"
 
@@ -215,7 +216,7 @@ models/                    # generated models and metadata
 
 The Strava API allows 200 calls per 15 minutes for the short-term limit. The synchronization client monitors API usage and pauses when the configured short-term threshold is reached.
 
-At least five valid activities are required to train a model for a sport.
+Training accepts any non-empty set of valid activities. Use repeated `--activity-id` options to train from specific Strava activities; missing activities are fetched and cached automatically.
 Predictions include a range derived from chronological backtesting and warn
 when route inputs fall outside the model's training range. They remain
 estimates and should not be treated as guarantees.

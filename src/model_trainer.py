@@ -17,7 +17,6 @@ from src.config import MODEL_DIR
 BASE_FEATURES = ["distance_km", "elevation_m"]
 FEATURES = BASE_FEATURES
 SEPARATE_ELEVATION_FEATURES = ["distance_km", "elevation_up_m", "elevation_down_m"]
-MIN_TRAINING_SAMPLES = 5
 REGRESSION_TYPES = {"linear", "ridge"}
 
 
@@ -114,6 +113,17 @@ def _select_model(
     return selected.fit(X, y), metrics, alpha
 
 
+def _unavailable_metrics() -> dict[str, float | None]:
+    return {
+        "mae": None,
+        "median_absolute_error": None,
+        "mape_pct": None,
+        "error_p90": None,
+        "legacy_ols_mae": None,
+        "legacy_ols_median_absolute_error": None,
+    }
+
+
 def _original_scale_parameters(model: NonNegativeRegressor) -> tuple[float, np.ndarray]:
     pipeline = model.estimator_
     scaler = pipeline.named_steps["scale"]
@@ -143,10 +153,9 @@ def train_models_for_sport(
         )
     model_features = SEPARATE_ELEVATION_FEATURES if separate_elevation else BASE_FEATURES
     required_columns = model_features + ["moving_time", "stopped_time"]
-    if len(df) < MIN_TRAINING_SAMPLES:
+    if df.empty:
         print(
-            f"Insufficient data ({len(df)} samples); at least "
-            f"{MIN_TRAINING_SAMPLES} are required for '{sport_name}'."
+            f"No valid data available for '{sport_name}'."
         )
         return False
     if not set(required_columns).issubset(df.columns):
@@ -171,23 +180,31 @@ def train_models_for_sport(
         target_frame = df[columns].dropna()
         if "start_date" in target_frame:
             target_frame = target_frame.sort_values("start_date", kind="stable")
-        if len(target_frame) < MIN_TRAINING_SAMPLES:
-            print(f"Insufficient complete data to train {label.lower()} for '{sport_name}'.")
+        if target_frame.empty:
+            print(f"No valid {label.lower()} data available for '{sport_name}'.")
             return False
         target_X = target_frame[model_features].reset_index(drop=True)
         target_y = target_frame[target].reset_index(drop=True)
         if regression_type == "ridge":
-            model, target_metrics, alpha = _select_model(target_X, target_y)
+            try:
+                model, target_metrics, alpha = _select_model(target_X, target_y)
+            except ValueError:
+                model = _ridge_model(1.0)
+                target_metrics = _unavailable_metrics()
+                alpha = 1.0
         else:
             model = _linear_model()
-            target_metrics = _cross_validate(model, target_X, target_y)
-            baseline_metrics = _cross_validate(
-                NonNegativeRegressor(LinearRegression()), target_X, target_y
-            )
-            target_metrics["legacy_ols_mae"] = baseline_metrics["mae"]
-            target_metrics["legacy_ols_median_absolute_error"] = baseline_metrics[
-                "median_absolute_error"
-            ]
+            try:
+                target_metrics = _cross_validate(model, target_X, target_y)
+                baseline_metrics = _cross_validate(
+                    NonNegativeRegressor(LinearRegression()), target_X, target_y
+                )
+                target_metrics["legacy_ols_mae"] = baseline_metrics["mae"]
+                target_metrics["legacy_ols_median_absolute_error"] = baseline_metrics[
+                    "median_absolute_error"
+                ]
+            except ValueError:
+                target_metrics = _unavailable_metrics()
             model = model.fit(target_X, target_y)
             alpha = None
         models[target] = model
@@ -257,6 +274,7 @@ def train_models_for_sport(
         "sample_count": len(df),
         "sample_counts": sample_counts,
         "filters": filters or {},
+        "activity_ids": (filters or {}).get("activity_ids"),
         "training_ranges": training_ranges,
         "regressions": regressions,
         "duration_intercept_seconds": regressions["moving_time"]["intercept"],

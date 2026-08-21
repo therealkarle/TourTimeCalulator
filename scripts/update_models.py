@@ -46,7 +46,7 @@ def update_model(
             "min_elevation_down_m", "max_elevation_down_m",
             "min_moving_time_s", "max_moving_time_s",
             "min_elapsed_time_s", "max_elapsed_time_s",
-            "heart_rate_data",
+                "heart_rate_data", "activity_ids",
         )
     }
     # Models created before filters were persisted used the historical 3 km

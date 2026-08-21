@@ -54,6 +54,7 @@ def load_cleaned_data(
     start_date: date | None = None,
     end_date: date | None = None,
     elevation_mode: str = "up",
+    activity_ids: list[int] | None = None,
 ) -> pd.DataFrame:
     """Load Strava activities and apply training filters.
     
@@ -80,17 +81,23 @@ def load_cleaned_data(
     ensure_db_schema(DB_PATH)
     requested = SPORT_ALIASES.get(sport_type.lower(), (sport_type, f"Virtual{sport_type}"))
     type_clause = ""
-    params: tuple[str, ...] = tuple(requested)
+    params: tuple[str | int, ...] = tuple(requested)
     if activity_types:
         type_clause = (
             " AND COALESCE(sport_type, type) IN "
             f"({','.join('?' for _ in activity_types)})"
         )
         params += tuple(activity_types)
+    id_clause = ""
+    if activity_ids is not None:
+        if any(isinstance(value, bool) or int(value) <= 0 for value in activity_ids):
+            raise ValueError("activity_ids must contain positive integers")
+        id_clause = f" AND id IN ({','.join('?' for _ in activity_ids)})"
+        params += tuple(int(value) for value in activity_ids)
     with closing(sqlite3.connect(DB_PATH)) as conn:
         frame = pd.read_sql_query(
             f"SELECT * FROM activities WHERE COALESCE(sport_type, type) IN "
-            f"({','.join('?' for _ in requested)}){type_clause}",
+        f"({','.join('?' for _ in requested)}){type_clause}{id_clause}",
             conn,
             params=params,
         )

@@ -89,6 +89,69 @@ class StravaClient:
         """Create the activities table and its useful indexes."""
         ensure_db_schema(self.db_path)
 
+    def ensure_activity_ids(self, activity_ids: list[int]) -> None:
+        """Fetch and cache any requested activities missing from SQLite."""
+        ids = list(dict.fromkeys(int(value) for value in activity_ids))
+        if not ids:
+            return
+        if any(value <= 0 for value in ids):
+            raise ValueError("activity_ids must contain positive integers")
+        with closing(sqlite3.connect(self.db_path)) as conn:
+            cached = {
+                row[0]
+                for row in conn.execute(
+                    f"SELECT id FROM activities WHERE id IN ({','.join('?' for _ in ids)})",
+                    ids,
+                )
+            }
+        missing = [value for value in ids if value not in cached]
+        if not missing:
+            return
+        if not all((self.client_id, self.client_secret, self.refresh_token)):
+            raise RuntimeError("Requested activity IDs are not cached and Strava credentials are missing.")
+        self.refresh_access_token()
+        for activity_id in missing:
+            response = requests.get(
+                f"{STRAVA_API_URL}/activities/{activity_id}",
+                headers={"Authorization": f"Bearer {self.access_token}"},
+                timeout=30,
+            )
+            if response.status_code in (403, 404):
+                raise ValueError(f"Strava activity {activity_id} was not found or is unavailable")
+            response.raise_for_status()
+            self._handle_rate_limits(response)
+            activity = response.json()
+            if int(activity.get("id", 0)) != activity_id:
+                raise ValueError(f"Strava returned the wrong activity for ID {activity_id}")
+            with closing(sqlite3.connect(self.db_path)) as conn:
+                self._cache_activity(conn, activity)
+                conn.commit()
+
+    def _cache_activity(self, conn: sqlite3.Connection, activity: dict[str, Any]) -> None:
+        conn.execute(
+            """INSERT OR REPLACE INTO activities
+            (id, name, type, sport_type, gear_id, commute, start_date, distance,
+             moving_time, elapsed_time, total_elevation_gain, kilojoules, calories,
+             workout_type, average_watts, weighted_average_watts, device_watts,
+             average_heartrate, has_power, descent_elevation_m,
+             elevation_stream_checked, elevation_stream_version)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                activity["id"], activity.get("name", activity.get("type", "")),
+                activity.get("type"), activity.get("sport_type", activity.get("type")),
+                activity.get("gear_id"), int(bool(activity.get("commute", False))),
+                self._parse_start_date(activity), activity.get("distance", 0.0),
+                activity.get("moving_time", 0), activity.get("elapsed_time", 0),
+                activity.get("total_elevation_gain", 0.0), activity.get("kilojoules"),
+                activity.get("calories"), activity.get("workout_type"),
+                activity.get("average_watts"), activity.get("weighted_average_watts"),
+                int(bool(activity.get("device_watts", False))), activity.get("average_heartrate"),
+                int(any(activity.get(field) is not None for field in ("average_watts", "weighted_average_watts"))),
+                self._calculate_elevation_loss(self._get_elevation_stream(activity["id"])),
+                1, ELEVATION_ALGORITHM_VERSION,
+            ),
+        )
+
     def refresh_access_token(self) -> None:
         """Obtain a fresh OAuth access token from the configured refresh token."""
         if not all((self.client_id, self.client_secret, self.refresh_token)):

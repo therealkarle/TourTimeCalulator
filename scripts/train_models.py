@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.feature_eng import SPORT_ALIASES, available_sport_profiles, load_cleaned_data
 from src.model_trainer import train_models_for_sport
+from src.strava_client import StravaClient
 
 SPORTS = {key: key for key in SPORT_ALIASES}
 
@@ -40,6 +41,7 @@ def train_sport(
     separate_elevation: bool = False,
     elevation_mode: str = "up",
     regression_type: str = "ridge",
+    activity_ids: list[int] | None = None,
 ) -> bool:
     """Load cleaned data and train one named model for one sport.
     
@@ -48,6 +50,10 @@ def train_sport(
     # Keep the model feature selection in sync with the selected elevation mode.
     # Explicit ``separate_elevation=True`` remains supported for direct callers.
     separate_elevation = separate_elevation or elevation_mode == "separate"
+    if activity_ids is not None:
+        if any(isinstance(value, bool) or int(value) <= 0 for value in activity_ids):
+            raise ValueError("activity_ids must contain positive integers")
+        StravaClient().ensure_activity_ids(activity_ids)
 
     data = load_cleaned_data(
         sport_name, activity_types, commute, equipment, power_data,
@@ -56,6 +62,7 @@ def train_sport(
         min_moving_time_s, max_moving_time_s, min_elapsed_time_s,
         max_elapsed_time_s, heart_rate_data, start_date, end_date,
         elevation_mode=elevation_mode,
+        activity_ids=activity_ids,
     )
     if data.empty:
         print(f"No valid Strava activities found for '{sport_name}'. Skipping.")
@@ -74,7 +81,8 @@ def train_sport(
                  "max_moving_time_s": max_moving_time_s, "min_elapsed_time_s": min_elapsed_time_s,
                  "max_elapsed_time_s": max_elapsed_time_s, "heart_rate_data": heart_rate_data,
                  "start_date": start_date.isoformat() if start_date else None,
-                 "end_date": end_date.isoformat() if end_date else None,
+        "end_date": end_date.isoformat() if end_date else None,
+        "activity_ids": activity_ids,
                  "elevation_mode": elevation_mode, "regression_type": regression_type},
         separate_elevation=separate_elevation,
         regression_type=regression_type,
@@ -118,6 +126,13 @@ def main() -> None:
     parser.add_argument("--max-elevation-m", type=non_negative_float)
     parser.add_argument("--start-date", type=iso_date, metavar="YYYY-MM-DD")
     parser.add_argument("--end-date", type=iso_date, metavar="YYYY-MM-DD")
+    parser.add_argument(
+        "--activity-id",
+        action="append",
+        dest="activity_ids",
+        type=positive_int,
+        help="Strava activity ID; may be specified multiple times",
+    )
     args = parser.parse_args()
 
     detected = available_sport_profiles()
@@ -159,6 +174,7 @@ def main() -> None:
         end_date=args.end_date,
         separate_elevation=args.separate_elevation,
         regression_type=args.regression,
+        activity_ids=args.activity_ids,
     )
 
 
@@ -166,6 +182,16 @@ def non_negative_float(value: str) -> float:
     parsed = float(value)
     if parsed < 0:
         raise argparse.ArgumentTypeError("value cannot be negative")
+    return parsed
+
+
+def positive_int(value: str) -> int:
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("activity ID must be an integer") from exc
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("activity ID must be positive")
     return parsed
 
 

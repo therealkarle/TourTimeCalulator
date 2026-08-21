@@ -12,7 +12,7 @@ from scripts import train_presets, update_models
 from scripts.train_presets import get_last_365_days
 from src import feature_eng, predictor
 from src.feature_eng import load_cleaned_data
-from src.model_trainer import MIN_TRAINING_SAMPLES, train_models_for_sport
+from src.model_trainer import train_models_for_sport
 from src.strava_client import (
     StravaClient,
     StravaDailyRateLimitError,
@@ -187,7 +187,7 @@ class PresetWindowTests(unittest.TestCase):
 
 class ModelIntegrationTests(unittest.TestCase):
     @staticmethod
-    def _training_frame(sample_count: int = MIN_TRAINING_SAMPLES + 10) -> pd.DataFrame:
+    def _training_frame(sample_count: int = 15) -> pd.DataFrame:
         rows = []
         for index in range(sample_count):
             distance = 10.0 + index
@@ -206,15 +206,15 @@ class ModelIntegrationTests(unittest.TestCase):
             )
         return pd.DataFrame(rows)
 
-    def test_training_requires_enough_samples(self) -> None:
+    def test_training_accepts_single_sample(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             trained = train_models_for_sport(
-                self._training_frame(MIN_TRAINING_SAMPLES - 1),
+                self._training_frame(1),
                 "ride",
-                "too-small",
+                "single-sample",
                 model_dir=Path(temp_dir),
             )
-        self.assertFalse(trained)
+        self.assertTrue(trained)
 
     def test_training_and_prediction_preserve_time_invariants(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
