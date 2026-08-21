@@ -1,5 +1,11 @@
 # Beispielbefehle für Tour-Schätzungen
 
+## Modelltraining mit ausgewählten Strava-Aktivitäten
+
+```powershell
+python -m scripts.train_models --sport ride --name "HaiderFast" --activity-id 7108949467 --activity-id 11378350577 --activity-id 9367798801
+```
+
 Die folgenden Befehle können in PowerShell im Projektverzeichnis ausgeführt werden.
 
 ## LongRunMin15kmAllTime (Ridge)
