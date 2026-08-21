@@ -65,6 +65,11 @@ goto :done
 "%PYTHON%" %PYTHON_ARGS% -m scripts.update_models %2 %3 %4 %5 %6 %7 %8 %9
 goto :done
 
+rem Calorie backfill is intentionally dormant until a secondary API is added.
+rem :calories
+rem "%PYTHON%" %PYTHON_ARGS% -m scripts.backfill_calories %2 %3 %4 %5 %6 %7 %8 %9
+rem goto :done
+
 :token
 "%PYTHON%" %PYTHON_ARGS% scripts\get_strava_refresh_token.py %2 %3 %4 %5 %6 %7 %8 %9
 goto :done

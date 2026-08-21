@@ -13,7 +13,11 @@ from scripts.train_presets import get_last_365_days
 from src import feature_eng, predictor
 from src.feature_eng import load_cleaned_data
 from src.model_trainer import MIN_TRAINING_SAMPLES, train_models_for_sport
-from src.strava_client import StravaClient, ensure_db_schema
+from src.strava_client import (
+    StravaClient,
+    StravaDailyRateLimitError,
+    ensure_db_schema,
+)
 
 
 class ElevationCalculationTests(unittest.TestCase):
@@ -29,6 +33,51 @@ class ElevationCalculationTests(unittest.TestCase):
 
     def test_missing_altitude_remains_unknown(self) -> None:
         self.assertIsNone(StravaClient._calculate_elevation_loss(None))
+
+
+class CaloriesBackfillTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
+        self.db_path = Path(self.temp_dir.name) / "activities.sqlite"
+        ensure_db_schema(self.db_path)
+        with sqlite3.connect(self.db_path) as conn:
+            conn.executemany(
+                "INSERT INTO activities (id, start_date) VALUES (?, ?)",
+                [(1, 1), (2, 2), (3, 3)],
+            )
+        self.client = StravaClient(self.db_path)
+        self.client.client_id = "id"
+        self.client.client_secret = "secret"
+        self.client.refresh_token = "refresh"
+        self.client.access_token = "access"
+
+    def tearDown(self) -> None:
+        self.temp_dir.cleanup()
+
+    def test_batches_are_checkpointed_and_resumable(self) -> None:
+        with patch.object(
+            self.client, "_get_activity_calories", side_effect=[300.0, None]
+        ) as fetch:
+            result = self.client.backfill_calories(batch_size=2)
+
+        self.assertEqual((result.checked, result.updated, result.remaining), (2, 1, 1))
+        self.assertEqual([call.args[0] for call in fetch.call_args_list], [3, 2])
+        with sqlite3.connect(self.db_path) as conn:
+            rows = conn.execute(
+                "SELECT id, calories, calories_checked FROM activities ORDER BY id"
+            ).fetchall()
+        self.assertEqual(rows, [(1, None, 0), (2, None, 1), (3, 300.0, 1)])
+
+    def test_daily_limit_keeps_unrequested_activity_pending(self) -> None:
+        with patch.object(
+            self.client,
+            "_get_activity_calories",
+            side_effect=StravaDailyRateLimitError("daily limit"),
+        ):
+            result = self.client.backfill_calories(batch_size=1)
+
+        self.assertTrue(result.daily_limit_reached)
+        self.assertEqual((result.checked, result.updated, result.remaining), (0, 0, 3))
 
 
 class FeatureEngineeringTests(unittest.TestCase):
@@ -80,15 +129,15 @@ class FeatureEngineeringTests(unittest.TestCase):
         with patch.object(feature_eng, "DB_PATH", self.db_path):
             return load_cleaned_data(min_distance_km=None, **kwargs)
 
-    def test_calories_are_used_and_kilojoules_are_ignored(self) -> None:
+    def test_calorie_feature_is_dormant(self) -> None:
         self._insert_activity(1, calories=500.0, kilojoules=1000.0)
         frame = self._load()
-        self.assertEqual(frame.iloc[0]["kcal_clean"], 500.0)
+        self.assertNotIn("kcal_clean", frame.columns)
 
-    def test_activity_without_calories_is_excluded(self) -> None:
+    def test_activity_without_calories_is_retained(self) -> None:
         self._insert_activity(1, calories=None, kilojoules=1000.0)
         frame = self._load()
-        self.assertTrue(frame.empty)
+        self.assertEqual(len(frame), 1)
 
     def test_stop_heavy_activity_is_retained_and_stop_time_is_derived(self) -> None:
         self._insert_activity(1, moving_time=1800, elapsed_time=7200)
@@ -178,7 +227,8 @@ class ModelIntegrationTests(unittest.TestCase):
             self.assertEqual(metadata["schema_version"], 2)
             self.assertEqual(metadata["regression_type"], "ridge")
             self.assertEqual(metadata["features"], ["distance_km", "elevation_m"])
-            self.assertEqual(metadata["energy"], {"unit": "kcal", "source": "calories"})
+            self.assertNotIn("energy", metadata)
+            self.assertNotIn("kcal_clean", metadata["regressions"])
             self.assertIn("stopped_time", metadata["regressions"])
             self.assertIn("error_p90", metadata["regressions"]["moving_time"])
 
@@ -190,12 +240,6 @@ class ModelIntegrationTests(unittest.TestCase):
                     "test-model", 20.0, 180.0, stopped_time_s=3600
                 )
 
-                metadata.pop("energy")
-                (model_dir / "test-model.txt").write_text(
-                    json.dumps(metadata), encoding="utf-8"
-                )
-                legacy_energy = predictor.predict_tour("test-model", 20.0, 180.0)
-
             self.assertGreaterEqual(
                 longer["predicted_moving_time_sec"], shorter["predicted_moving_time_sec"]
             )
@@ -205,8 +249,8 @@ class ModelIntegrationTests(unittest.TestCase):
                 + shorter["predicted_stopped_time_sec"],
             )
             self.assertEqual(planned_break["predicted_stopped_time_sec"], 3600)
-            self.assertIsNone(legacy_energy["predicted_kcal"])
-            self.assertIsNone(legacy_energy["predicted_kcal_interval"])
+            self.assertNotIn("predicted_kcal", shorter)
+            self.assertNotIn("predicted_kcal_interval", shorter)
             self.assertTrue(outside["warnings"])
             self.assertGreaterEqual(
                 shorter["predicted_elapsed_time_interval_sec"][1],

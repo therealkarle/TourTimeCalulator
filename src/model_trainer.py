@@ -135,14 +135,14 @@ def train_models_for_sport(
     separate_elevation: bool = False,
     regression_type: str = "ridge",
 ) -> bool:
-    """Train validated regressors for moving time, stopped time, and energy."""
+    """Train validated regressors for moving and stopped time."""
     del distance_elevation_only  # Retained for compatibility with existing callers.
     if regression_type not in REGRESSION_TYPES:
         raise ValueError(
             f"regression_type must be one of: {', '.join(sorted(REGRESSION_TYPES))}"
         )
     model_features = SEPARATE_ELEVATION_FEATURES if separate_elevation else BASE_FEATURES
-    required_columns = model_features + ["moving_time", "stopped_time", "kcal_clean"]
+    required_columns = model_features + ["moving_time", "stopped_time"]
     if len(df) < MIN_TRAINING_SAMPLES:
         print(
             f"Insufficient data ({len(df)} samples); at least "
@@ -155,7 +155,9 @@ def train_models_for_sport(
     targets = {
         "moving_time": "Moving time",
         "stopped_time": "Stopped time",
-        "kcal_clean": "Energy",
+        # Calorie training is intentionally dormant until another API supplies
+        # dependable values. Restore this target together with feature_eng.py.
+        # "kcal_clean": "Energy",
     }
     models: dict[str, NonNegativeRegressor] = {}
     metrics: dict[str, dict[str, float | None]] = {}
@@ -218,7 +220,7 @@ def train_models_for_sport(
             "sport_type": sport_name.lower(),
             "models": models,
             "time_model": models["moving_time"],
-            "kcal_model": models["kcal_clean"],
+            # "kcal_model": models["kcal_clean"],  # Dormant; see targets above.
         },
         model_dir / f"{model_id}.joblib",
     )
@@ -257,14 +259,12 @@ def train_models_for_sport(
         "filters": filters or {},
         "training_ranges": training_ranges,
         "regressions": regressions,
-        "energy": {
-            "unit": "kcal",
-            "source": "calories",
-        },
         "duration_intercept_seconds": regressions["moving_time"]["intercept"],
         "duration_coefficients": regressions["moving_time"]["coefficients"],
-        "kcal_intercept": regressions["kcal_clean"]["intercept"],
-        "kcal_coefficients": regressions["kcal_clean"]["coefficients"],
+        # Calorie metadata stays disabled until calorie training is restored.
+        # "energy": {"unit": "kcal", "source": "secondary_api"},
+        # "kcal_intercept": regressions["kcal_clean"]["intercept"],
+        # "kcal_coefficients": regressions["kcal_clean"]["coefficients"],
     }
     with (model_dir / f"{model_id}.txt").open("w", encoding="utf-8") as metadata_file:
         json.dump(metadata, metadata_file, indent=2)

@@ -160,14 +160,17 @@ def load_cleaned_data(
     if heart_rate_data is not None:
         heart_rate_available = frame["average_heartrate"].notna()
         frame = frame[heart_rate_available == heart_rate_data]
-    calories = pd.to_numeric(frame["calories"], errors="coerce")
-    frame["kcal_clean"] = calories
+    # Calorie feature engineering is intentionally dormant until a reliable
+    # secondary API is connected. Keep the source column in SQLite so this can
+    # be restored without another schema migration.
+    # calories = pd.to_numeric(frame["calories"], errors="coerce")
+    # frame["kcal_clean"] = calories
     frame["average_power_watts"] = pd.to_numeric(frame["average_watts"], errors="coerce")
     frame["weighted_average_power_watts"] = pd.to_numeric(
         frame["weighted_average_watts"], errors="coerce"
     )
     frame["average_hr_bpm"] = pd.to_numeric(frame["average_heartrate"], errors="coerce")
-    return frame.dropna(subset=["moving_time", "kcal_clean"])
+    return frame.dropna(subset=["moving_time"])
 
 
 def _validate_filter_ranges(

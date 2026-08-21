@@ -5,7 +5,7 @@ Tour Time Calculator is a local Python command-line application that uses your h
 It stores Strava data in a local SQLite cache and trains named regression models for:
 
 - moving time, stopped time, and elapsed time
-- energy consumption and average speed
+- average speed
 - chronological validation errors and likely prediction ranges
 
 The project is designed to keep personal activity data and trained models on your computer. Nothing is uploaded by the application.
@@ -182,6 +182,10 @@ currently cached activities:
 python -m scripts.update_models
 ```
 
+Calorie prediction is currently dormant because Strava does not provide calories
+in its bundled activity response. The database column and disconnected backfill
+implementation remain available for a future secondary API integration.
+
 Create one Linear and one Ridge variant from every legacy model. The original
 artifacts are retained under `models/legacy/` after both variants train
 successfully:
@@ -298,12 +302,12 @@ models/                         Generated models (ignored by Git)
 
 #### `src/model_trainer.py`
 
-- **`train_models_for_sport(df, sport_name, model_name, ...)`** - Trains and persists chronologically validated, regularized models for moving time, stopped time, and energy consumption. Supports separate ascent/descent features.
+- **`train_models_for_sport(df, sport_name, model_name, ...)`** - Trains and persists chronologically validated, regularized models for moving and stopped time. Supports separate ascent/descent features.
 
 #### `src/predictor.py`
 
 - **`list_models(model_dir)`** - Returns a list of all trained models with their metadata from the models directory.
-- **`predict_tour(model_name, distance_km, elevation_m, descent_m, stopped_time_s)`** - Predicts consistent moving, stopped, and elapsed times plus energy, uncertainty ranges, and out-of-range warnings.
+- **`predict_tour(model_name, distance_km, elevation_m, descent_m, stopped_time_s)`** - Predicts consistent moving, stopped, and elapsed times plus uncertainty ranges and out-of-range warnings.
 - **`_predict_optional(model, features)`** - Predicts optional metrics (power, heart rate) when available in the model.
 - **`_rounded_or_none(value)`** - Rounds predictions to integers or returns None for unavailable metrics.
 

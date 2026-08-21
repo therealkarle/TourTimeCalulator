@@ -3,6 +3,7 @@
 import sqlite3
 import time
 from contextlib import closing
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from math import isfinite
 from pathlib import Path
@@ -22,6 +23,20 @@ from src.config import (
 ELEVATION_ALGORITHM_VERSION = 1
 
 
+@dataclass(frozen=True)
+class CaloriesBackfillResult:
+    """Progress from one resumable batch of activity-detail requests."""
+
+    checked: int
+    updated: int
+    remaining: int
+    daily_limit_reached: bool = False
+
+
+class StravaDailyRateLimitError(RuntimeError):
+    """Raised when Strava's daily request allowance is exhausted."""
+
+
 def ensure_db_schema(db_path: Path = DB_PATH) -> None:
     """Create the activities table and apply migrations to an existing cache."""
     db_path = Path(db_path)
@@ -37,7 +52,8 @@ def ensure_db_schema(db_path: Path = DB_PATH) -> None:
                 average_watts REAL, weighted_average_watts REAL,
                 device_watts INTEGER, average_heartrate REAL, has_power INTEGER,
                 descent_elevation_m REAL, elevation_stream_checked INTEGER DEFAULT 0,
-                elevation_stream_version INTEGER DEFAULT 0
+                elevation_stream_version INTEGER DEFAULT 0,
+                calories_checked INTEGER DEFAULT 0
             )"""
         )
         columns = {row[1] for row in conn.execute("PRAGMA table_info(activities)")}
@@ -47,6 +63,7 @@ def ensure_db_schema(db_path: Path = DB_PATH) -> None:
             "device_watts": "INTEGER", "average_heartrate": "REAL", "has_power": "INTEGER",
             "descent_elevation_m": "REAL", "elevation_stream_checked": "INTEGER DEFAULT 0",
             "elevation_stream_version": "INTEGER DEFAULT 0",
+            "calories_checked": "INTEGER DEFAULT 0",
         }
         for column, definition in migrations.items():
             if column not in columns:
@@ -191,6 +208,97 @@ class StravaClient:
             updated += 1
         print(f"Elevation backfill finished: {updated} activities checked.")
         return updated
+
+    @staticmethod
+    def _daily_rate_limit_reached(response: requests.Response) -> bool:
+        """Return whether Strava reports an exhausted daily allowance."""
+        try:
+            usage = [int(value) for value in response.headers["X-RateLimit-Usage"].split(",")]
+            limits = [int(value) for value in response.headers["X-RateLimit-Limit"].split(",")]
+            return len(usage) > 1 and len(limits) > 1 and limits[1] > 0 and usage[1] >= limits[1]
+        except (KeyError, TypeError, ValueError):
+            return False
+
+    def _get_activity_calories(self, activity_id: int) -> float | None:
+        """Fetch calories from Strava's detailed activity endpoint."""
+        while True:
+            response = requests.get(
+                f"{STRAVA_API_URL}/activities/{activity_id}",
+                headers={"Authorization": f"Bearer {self.access_token}"},
+                timeout=30,
+            )
+            if response.status_code == 429:
+                if self._daily_rate_limit_reached(response):
+                    raise StravaDailyRateLimitError(
+                        "Strava daily API limit reached; rerun after the limit resets."
+                    )
+                retry_after = response.headers.get("Retry-After", "900")
+                try:
+                    wait_seconds = max(1, int(retry_after))
+                except ValueError:
+                    wait_seconds = 900
+                print(f"Strava short-term limit reached. Retrying in {wait_seconds} seconds...")
+                time.sleep(wait_seconds)
+                continue
+            if response.status_code in (403, 404):
+                return None
+            response.raise_for_status()
+            self._handle_rate_limits(response)
+            value = response.json().get("calories")
+            try:
+                calories = float(value)
+            except (TypeError, ValueError):
+                return None
+            return calories if isfinite(calories) and calories >= 0 else None
+
+    def backfill_calories(self, batch_size: int = 100) -> CaloriesBackfillResult:
+        """Fetch one checkpointed batch of missing detailed calorie values."""
+        if batch_size < 1:
+            raise ValueError("batch_size must be at least 1")
+        if not all((self.client_id, self.client_secret, self.refresh_token)):
+            raise RuntimeError("Strava credentials are missing from .env")
+
+        if not self.access_token:
+            self.refresh_access_token()
+        with closing(sqlite3.connect(self.db_path)) as conn:
+            activity_ids = [
+                row[0]
+                for row in conn.execute(
+                    "SELECT id FROM activities "
+                    "WHERE calories IS NULL AND COALESCE(calories_checked, 0) = 0 "
+                    "ORDER BY start_date DESC LIMIT ?",
+                    (batch_size,),
+                )
+            ]
+
+        checked = updated = 0
+        daily_limit_reached = False
+        for activity_id in activity_ids:
+            try:
+                calories = self._get_activity_calories(activity_id)
+            except StravaDailyRateLimitError as exc:
+                print(exc)
+                daily_limit_reached = True
+                break
+            with closing(sqlite3.connect(self.db_path)) as conn, conn:
+                conn.execute(
+                    "UPDATE activities SET calories = ?, calories_checked = 1 WHERE id = ?",
+                    (calories, activity_id),
+                )
+            checked += 1
+            updated += calories is not None
+
+        with closing(sqlite3.connect(self.db_path)) as conn:
+            remaining = conn.execute(
+                "SELECT COUNT(*) FROM activities "
+                "WHERE calories IS NULL AND COALESCE(calories_checked, 0) = 0"
+            ).fetchone()[0]
+        return CaloriesBackfillResult(
+            checked=checked,
+            updated=updated,
+            remaining=remaining,
+            daily_limit_reached=daily_limit_reached,
+        )
 
     def sync_activities(self) -> int:
         """Fetch activities newer than the cache and return the insert count."""
